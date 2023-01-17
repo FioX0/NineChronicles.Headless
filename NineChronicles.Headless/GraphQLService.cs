@@ -111,7 +111,7 @@ namespace NineChronicles.Headless
                 services.AddHealthChecks();
 
                 services.AddMvc(options => options.EnableEndpointRouting = false);
-                services.AddControllers(options => options.EnableEndpointRouting = false);
+                services.AddControllers();
                 services.AddGraphQL(
                         (options, provider) =>
                         {
