@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using AspNetCoreRateLimit;
 using GraphQL.Server;
 using GraphQL.Utilities;
 using Grpc.Core;
@@ -159,6 +160,8 @@ namespace NineChronicles.Headless
 
                 app.UseRouting();
                 app.UseAuthorization();
+                app.UseIpRateLimiting();
+                app.UseMvc();
                 app.UseEndpoints(endpoints =>
                 {
                     endpoints.MapControllers();
