@@ -380,7 +380,7 @@ namespace NineChronicles.Headless.Executable
                     services.AddMvc();
                     services.AddSingleton<IRateLimitConfiguration, RateLimitConfiguration>();
                     services.AddSingleton<IIpPolicyStore, DistributedCacheIpPolicyStore>();
-                    services.AddSingleton<IRateLimitCounterStore,DistributedCacheRateLimitCounterStore>();
+                    services.AddSingleton<IRateLimitCounterStore, DistributedCacheRateLimitCounterStore>();
                     services.AddSingleton(_ => standaloneContext);
                     services.AddSingleton<ConcurrentDictionary<string, ITransaction>>();
                 });
