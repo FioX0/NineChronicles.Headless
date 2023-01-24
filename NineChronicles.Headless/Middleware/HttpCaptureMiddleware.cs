@@ -23,6 +23,9 @@ namespace NineChronicles.Headless.Middleware
             if (context.Request.Protocol == "HTTP/1.1")
             {
                 context.Request.EnableBuffering();
+                var remoteIp = context.Connection.RemoteIpAddress;
+                _logger.Debug("IP: {IP}", remoteIp);
+                _logger.Debug("HEADER: {HEADER}", context.Request.Headers);
                 var body = await new StreamReader(context.Request.Body).ReadToEndAsync();
                 _logger.Debug("[REQUEST-CAPTURE] {Method} {Path}\n{Body}", context.Request.Method, context.Request.Path, body);
                 context.Request.Body.Seek(0, SeekOrigin.Begin);
