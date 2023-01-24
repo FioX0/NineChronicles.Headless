@@ -102,10 +102,15 @@ namespace NineChronicles.Headless
                 services.AddMemoryCache();
 
                 //load general configuration from appsettings.json
-                services.Configure<IpRateLimitOptions>(GraphQlNodeServiceProperties.Configuration!.GetSection("IpRateLimiting"));
+                if (GraphQlNodeServiceProperties.Configuration != null)
+                {
+                    services.Configure<IpRateLimitOptions>(
+                        GraphQlNodeServiceProperties.Configuration.GetSection("IpRateLimiting"));
 
-                //load ip rules from appsettings.json
-                services.Configure<IpRateLimitPolicies>(GraphQlNodeServiceProperties.Configuration!.GetSection("IpRateLimitPolicies"));
+                    //load ip rules from appsettings.json
+                    services.Configure<IpRateLimitPolicies>(
+                        GraphQlNodeServiceProperties.Configuration!.GetSection("IpRateLimitPolicies"));
+                }
 
                 // inject counter and rules stores
                 services.AddInMemoryRateLimiting();
