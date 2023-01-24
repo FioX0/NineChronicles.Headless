@@ -22,7 +22,6 @@ using System.Net.Http;
 using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
-using AspNetCoreRateLimit;
 // import necessary for sentry exception filters
 using Libplanet.Blocks;
 using Libplanet.Net.Transports;
@@ -304,6 +303,7 @@ namespace NineChronicles.Headless.Executable
                             ? new GraphQLNodeServiceProperties.MagicOnionHttpOptions(
                                 $"{headlessConfig.RpcListenHost}:{headlessConfig.RpcListenPort}")
                             : (GraphQLNodeServiceProperties.MagicOnionHttpOptions?)null,
+                        Configuration = configuration,
                     };
 
                     var graphQLService = new GraphQLService(graphQLNodeServiceProperties);
@@ -368,15 +368,6 @@ namespace NineChronicles.Headless.Executable
                 };
                 hostBuilder.ConfigureServices(services =>
                 {
-                    services.AddOptions();
-                    services.AddMemoryCache();
-                    services.Configure<IpRateLimitOptions>(configuration.GetSection("IpRateLimiting"));
-                    services.Configure<IpRateLimitPolicies>(configuration.GetSection("IpRateLimitPolicies"));
-                    services.AddInMemoryRateLimiting();
-                    services.AddMvc();
-                    services.AddSingleton<IRateLimitConfiguration, RateLimitConfiguration>();
-                    services.AddSingleton<IIpPolicyStore, DistributedCacheIpPolicyStore>();
-                    services.AddSingleton<IRateLimitCounterStore, DistributedCacheRateLimitCounterStore>();
                     services.AddSingleton(_ => standaloneContext);
                     services.AddSingleton<ConcurrentDictionary<string, ITransaction>>();
                 });

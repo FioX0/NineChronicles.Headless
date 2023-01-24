@@ -34,7 +34,7 @@ namespace NineChronicles.Headless
 
         public const string MagicOnionTargetKey = "magicOnionTarget";
 
-        private GraphQLNodeServiceProperties GraphQlNodeServiceProperties { get; }
+        private static GraphQLNodeServiceProperties GraphQlNodeServiceProperties { get; set; } = null!;
 
         public GraphQLService(GraphQLNodeServiceProperties properties)
         {
@@ -96,6 +96,29 @@ namespace NineChronicles.Headless
 
             public void ConfigureServices(IServiceCollection services)
             {
+                services.AddOptions();
+
+                // needed to store rate limit counters and ip rules
+                services.AddMemoryCache();
+
+                //load general configuration from appsettings.json
+                services.Configure<IpRateLimitOptions>(GraphQlNodeServiceProperties.Configuration!.GetSection("IpRateLimiting"));
+
+                //load ip rules from appsettings.json
+                services.Configure<IpRateLimitPolicies>(GraphQlNodeServiceProperties.Configuration!.GetSection("IpRateLimitPolicies"));
+
+                // inject counter and rules stores
+                services.AddInMemoryRateLimiting();
+                //services.AddDistributedRateLimiting<AsyncKeyLockProcessingStrategy>();
+                //services.AddDistributedRateLimiting<RedisProcessingStrategy>();
+                //services.AddRedisRateLimiting();
+
+                // Add framework services.
+                services.AddMvc();
+
+                // configuration (resolvers, counter key builders)
+                services.AddSingleton<IRateLimitConfiguration, RateLimitConfiguration>();
+
                 if (!(Configuration[NoCorsKey] is null))
                 {
                     services.AddCors(
