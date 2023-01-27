@@ -184,10 +184,7 @@ namespace NineChronicles.Headless
                 }
                 else
                 {
-                    app.UseCors(builder => builder
-                        .AllowAnyOrigin()
-                        .AllowAnyHeader()
-                        .AllowAnyMethod());
+                    app.UseCors("AllowAllOrigins");
                 }
 
                 app.UseRouting();
