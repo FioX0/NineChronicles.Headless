@@ -96,33 +96,15 @@ namespace NineChronicles.Headless
 
             public void ConfigureServices(IServiceCollection services)
             {
-                services.AddOptions();
-
-                // needed to store rate limit counters and ip rules
-                services.AddMemoryCache();
-
-                //load general configuration from appsettings.json
-                if (GraphQlNodeServiceProperties.Configuration != null)
+                if (GraphQlNodeServiceProperties.IpRateLimitOptions != null)
                 {
-                    services.Configure<IpRateLimitOptions>(
-                        GraphQlNodeServiceProperties.Configuration.GetSection("IpRateLimiting"));
-
-                    //load ip rules from appsettings.json
-                    services.Configure<IpRateLimitPolicies>(
-                        GraphQlNodeServiceProperties.Configuration!.GetSection("IpRateLimitPolicies"));
+                    services.AddOptions();
+                    services.AddMemoryCache();
+                    services.Configure<IpRateLimitOptions>(GraphQlNodeServiceProperties.IpRateLimitOptions);
+                    services.AddInMemoryRateLimiting();
+                    services.AddMvc();
+                    services.AddSingleton<IRateLimitConfiguration, RateLimitConfiguration>();
                 }
-
-                // inject counter and rules stores
-                services.AddInMemoryRateLimiting();
-                //services.AddDistributedRateLimiting<AsyncKeyLockProcessingStrategy>();
-                //services.AddDistributedRateLimiting<RedisProcessingStrategy>();
-                //services.AddRedisRateLimiting();
-
-                // Add framework services.
-                services.AddMvc();
-
-                // configuration (resolvers, counter key builders)
-                services.AddSingleton<IRateLimitConfiguration, RateLimitConfiguration>();
 
                 if (!(Configuration[NoCorsKey] is null))
                 {
@@ -189,8 +171,12 @@ namespace NineChronicles.Headless
 
                 app.UseRouting();
                 app.UseAuthorization();
-                app.UseIpRateLimiting();
-                app.UseMvc();
+                if (GraphQlNodeServiceProperties.IpRateLimitOptions != null)
+                {
+                    app.UseIpRateLimiting();
+                    app.UseMvc();
+                }
+
                 app.UseEndpoints(endpoints =>
                 {
                     endpoints.MapControllers();

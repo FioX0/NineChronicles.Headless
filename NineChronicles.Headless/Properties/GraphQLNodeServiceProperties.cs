@@ -28,6 +28,6 @@ namespace NineChronicles.Headless.Properties
             public string Target { get; }
         }
 
-        public IConfigurationRoot? Configuration { get; set; }
+        public IConfigurationSection? IpRateLimitOptions { get; set; }
     }
 }
