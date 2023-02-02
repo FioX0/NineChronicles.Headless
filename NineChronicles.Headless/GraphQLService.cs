@@ -73,9 +73,9 @@ namespace NineChronicles.Headless
                             dictionary[MagicOnionTargetKey] = options.Target;
                         }
 
-                        if (GraphQlNodeServiceProperties.IpRateLimitOptions is {Value: { }})
+                        if (GraphQlNodeServiceProperties.IpRateLimiting?.Value != null)
                         {
-                            builder.AddConfiguration(GraphQlNodeServiceProperties.IpRateLimitOptions);
+                            builder.AddConfiguration(GraphQlNodeServiceProperties.IpRateLimiting);
                         }
 
                         builder.AddInMemoryCollection(dictionary);
@@ -101,11 +101,11 @@ namespace NineChronicles.Headless
 
             public void ConfigureServices(IServiceCollection services)
             {
-                if (Configuration.GetSection("IpRateLimitingOptions").Value != null)
+                if (Configuration.GetSection("IpRateLimiting").Value != null)
                 {
                     services.AddOptions();
                     services.AddMemoryCache();
-                    services.Configure<IpRateLimitOptions>(Configuration.GetSection("IpRateLimitingOptions"));
+                    services.Configure<IpRateLimitOptions>(Configuration.GetSection("IpRateLimiting"));
                     services.AddInMemoryRateLimiting();
                     services.AddMvc();
                     services.AddSingleton<IRateLimitConfiguration, RateLimitConfiguration>();

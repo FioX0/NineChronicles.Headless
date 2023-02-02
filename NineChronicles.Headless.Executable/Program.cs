@@ -22,6 +22,7 @@ using System.Net.Http;
 using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
+using AspNetCoreRateLimit;
 // import necessary for sentry exception filters
 using Libplanet.Blocks;
 using Libplanet.Net.Transports;
@@ -198,11 +199,13 @@ namespace NineChronicles.Headless.Executable
                 HttpResponseMessage resp = await client.GetAsync(configPath);
                 resp.EnsureSuccessStatusCode();
                 Stream body = await resp.Content.ReadAsStreamAsync();
-                configurationBuilder.AddJsonStream(body);
+                configurationBuilder.AddJsonStream(body)
+                    .AddEnvironmentVariables();
             }
             else
             {
-                configurationBuilder.AddJsonFile(configPath);
+                configurationBuilder.AddJsonFile(configPath)
+                    .AddEnvironmentVariables();
             }
 
             // Setup logger.
@@ -303,7 +306,7 @@ namespace NineChronicles.Headless.Executable
                             ? new GraphQLNodeServiceProperties.MagicOnionHttpOptions(
                                 $"{headlessConfig.RpcListenHost}:{headlessConfig.RpcListenPort}")
                             : (GraphQLNodeServiceProperties.MagicOnionHttpOptions?)null,
-                        IpRateLimitOptions = configuration.GetSection("IpRateLimiting").Value != null ? configuration.GetSection("IpRateLimiting") : null,
+                        IpRateLimiting = configuration.GetSection("IpRateLimiting").Value != null ? configuration.GetSection("IpRateLimiting") : null,
                     };
 
                     var graphQLService = new GraphQLService(graphQLNodeServiceProperties);
