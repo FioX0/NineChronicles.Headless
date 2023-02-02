@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using AspNetCoreRateLimit;
 using GraphQL.Server;
 using GraphQL.Utilities;
 using Grpc.Core;
@@ -72,6 +73,11 @@ namespace NineChronicles.Headless
                             dictionary[MagicOnionTargetKey] = options.Target;
                         }
 
+                        if (GraphQlNodeServiceProperties.IpRateLimitOptions is {Value: { }})
+                        {
+                            builder.AddConfiguration(GraphQlNodeServiceProperties.IpRateLimitOptions);
+                        }
+
                         builder.AddInMemoryCollection(dictionary);
                     })
                     .ConfigureKestrel(options =>
@@ -95,6 +101,16 @@ namespace NineChronicles.Headless
 
             public void ConfigureServices(IServiceCollection services)
             {
+                if (Configuration.GetSection("IpRateLimitingOptions").Value != null)
+                {
+                    services.AddOptions();
+                    services.AddMemoryCache();
+                    services.Configure<IpRateLimitOptions>(Configuration.GetSection("IpRateLimitingOptions"));
+                    services.AddInMemoryRateLimiting();
+                    services.AddMvc();
+                    services.AddSingleton<IRateLimitConfiguration, RateLimitConfiguration>();
+                }
+
                 if (!(Configuration[NoCorsKey] is null))
                 {
                     services.AddCors(
@@ -159,6 +175,12 @@ namespace NineChronicles.Headless
 
                 app.UseRouting();
                 app.UseAuthorization();
+                if (Configuration.GetSection("IpRateLimitingOptions").Value != null)
+                {
+                    app.UseIpRateLimiting();
+                    app.UseMvc();
+                }
+
                 app.UseEndpoints(endpoints =>
                 {
                     endpoints.MapControllers();
