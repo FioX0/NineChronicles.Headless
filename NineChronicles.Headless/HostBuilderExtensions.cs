@@ -1,8 +1,11 @@
+using System;
 using System.Collections.Concurrent;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using NineChronicles.Headless.Properties;
 using System.Net;
+using System.Threading.RateLimiting;
+using System.Threading.Tasks;
 using Grpc.Core;
 using Grpc.Net.Client;
 using Lib9c.Formatters;
@@ -13,9 +16,12 @@ using MessagePack;
 using MessagePack.Resolvers;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Nekoyume.Action;
+using NineChronicles.Headless.Middleware;
 using Sentry;
+using Serilog;
 
 namespace NineChronicles.Headless
 {
@@ -77,7 +83,17 @@ namespace NineChronicles.Headless
                     services.AddGrpc(options =>
                     {
                         options.MaxReceiveMessageSize = null;
+                        options.Interceptors.Add<GrpcCaptureMiddleware>();
                     });
+
+                    if (properties.RpcRateLimiter)
+                    {
+                        services.AddRateLimiter(limiterOptions =>
+                        {
+                            limiterOptions.AddPolicy<string, GrpcRateLimiterPolicy>("GrpcRateLimiter");
+                        });
+                    }
+
                     services.AddMagicOnion();
                     services.AddSingleton(provider =>
                     {
