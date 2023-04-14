@@ -50,6 +50,8 @@ namespace NineChronicles.Headless.Executable
         public bool? RpcRemoteServer { get; set; }
         public bool? RpcHttpServer { get; set; }
         public bool RpcRateLimiter { get; set; }
+        public int? RpcRateLimiterWindow { get; set; }
+        public int? RpcRateLimiterPermit { get; set; }
 
         // GraphQL Server
         public bool GraphQLServer { get; set; }
@@ -110,6 +112,8 @@ namespace NineChronicles.Headless.Executable
             bool? rpcRemoteServer,
             bool? rpcHttpServer,
             bool? rpcRateLimiter,
+            int? rpcRateLimiterWindow,
+            int? rpcRateLimiterPermit,
             bool? graphQlServer,
             string? graphQLHost,
             int? graphQLPort,
@@ -160,6 +164,8 @@ namespace NineChronicles.Headless.Executable
             RpcRemoteServer = rpcRemoteServer ?? RpcRemoteServer;
             RpcHttpServer = rpcHttpServer ?? RpcHttpServer;
             RpcRateLimiter = rpcRateLimiter ?? RpcRateLimiter;
+            RpcRateLimiterWindow = rpcRateLimiterWindow ?? RpcRateLimiterWindow;
+            RpcRateLimiterPermit = rpcRateLimiterPermit ?? RpcRateLimiterPermit;
             GraphQLServer = graphQlServer ?? GraphQLServer;
             GraphQLHost = graphQLHost ?? GraphQLHost;
             GraphQLPort = graphQLPort ?? GraphQLPort;

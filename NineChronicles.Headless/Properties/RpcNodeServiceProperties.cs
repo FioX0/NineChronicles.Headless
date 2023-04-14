@@ -9,5 +9,9 @@ namespace NineChronicles.Headless.Properties
         public bool RpcRemoteServer { get; set; }
 
         public bool RpcRateLimiter { get; set; }
+
+        public int RpcRateLimiterWindow { get; set; }
+
+        public int RpcRateLimiterPermit { get; set; }
     }
 }

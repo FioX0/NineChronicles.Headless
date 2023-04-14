@@ -137,7 +137,9 @@ namespace NineChronicles.Headless.Properties
             string rpcListenHost = "0.0.0.0",
             int? rpcListenPort = null,
             bool rpcRemoteServer = false,
-            bool rpcRateLimiter = false)
+            bool rpcRateLimiter = false,
+            int? rpcRateLimiterWindow = 5,
+            int? rpcRateLimiterPermit = 1)
         {
 
             if (string.IsNullOrEmpty(rpcListenHost))
@@ -157,7 +159,9 @@ namespace NineChronicles.Headless.Properties
                 RpcListenHost = rpcListenHost,
                 RpcListenPort = rpcPortValue,
                 RpcRemoteServer = rpcRemoteServer,
-                RpcRateLimiter = rpcRateLimiter
+                RpcRateLimiter = rpcRateLimiter,
+                RpcRateLimiterWindow = rpcRateLimiterWindow ?? 5,
+                RpcRateLimiterPermit = rpcRateLimiterPermit ?? 1
             };
         }
     }

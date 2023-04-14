@@ -22,7 +22,7 @@ namespace NineChronicles.Headless.Middleware
                 var httpContext = context.GetHttpContext();
                 var ipAddress = httpContext.Connection.RemoteIpAddress + ":" + httpContext.Connection.RemotePort;
                 _logger.Information(
-                    "[GRPC-REQUEST-CAPTURE] IP: {IP} Method: {Method} Request: {Request}",
+                    "[GRPC-REQUEST-CAPTURE] Ip: {IP} Method: {Method} Request: {Request}",
                     ipAddress, context.Method, request);
             }
 

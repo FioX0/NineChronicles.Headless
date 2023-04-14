@@ -18,6 +18,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
+using Microsoft.Extensions.Options;
 using Nekoyume.Action;
 using NineChronicles.Headless.Middleware;
 using Sentry;
@@ -88,6 +89,12 @@ namespace NineChronicles.Headless
 
                     if (properties.RpcRateLimiter)
                     {
+                        services.Configure<GrpcRateLimitOptions>(options =>
+                        {
+                            options.Window = properties.RpcRateLimiterWindow;
+                            options.PermitLimit = properties.RpcRateLimiterPermit;
+                        });
+
                         services.AddRateLimiter(limiterOptions =>
                         {
                             limiterOptions.AddPolicy<string, GrpcRateLimiterPolicy>("GrpcRateLimiter");
