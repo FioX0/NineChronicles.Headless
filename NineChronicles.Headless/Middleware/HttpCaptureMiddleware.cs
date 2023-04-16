@@ -1,4 +1,5 @@
 using System.IO;
+using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
 using Serilog;
@@ -22,10 +23,12 @@ namespace NineChronicles.Headless.Middleware
             // Prevent to harm HTTP/2 communication.
             if (context.Request.Protocol == "HTTP/1.1")
             {
+                var xForwardedForIp =
+                    context.Request.Headers["X-Forwarded-For"].FirstOrDefault();
                 context.Request.EnableBuffering();
                 var remoteIp = context.Connection.RemoteIpAddress;
                 var body = await new StreamReader(context.Request.Body).ReadToEndAsync();
-                _logger.Information("[REQUEST-CAPTURE] Ip: {IP} Method: {Method} Endpoint: {Path}\n{Body}", remoteIp, context.Request.Method, context.Request.Path, body);
+                _logger.Information("[REQUEST-CAPTURE] Ip: {IP} X-Forwarded-For-Ip: {X-Forwarded-For-Ip} Method: {Method} Endpoint: {Path}\n{Body}", remoteIp, xForwardedForIp, context.Request.Method, context.Request.Path, body);
                 context.Request.Body.Seek(0, SeekOrigin.Begin);
             }
 

@@ -13,6 +13,7 @@ using MessagePack;
 using MessagePack.Resolvers;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Nekoyume.Action;
 using Sentry;
@@ -57,6 +58,11 @@ namespace NineChronicles.Headless
                         provider.GetRequiredService<ConcurrentDictionary<string, ITransaction>>()
                     );
                 });
+                services.Configure<ForwardedHeadersOptions>(options =>
+                {
+                    options.ForwardedHeaders =
+                        ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+                });
             });
         }
 
@@ -77,6 +83,11 @@ namespace NineChronicles.Headless
                     services.AddGrpc(options =>
                     {
                         options.MaxReceiveMessageSize = null;
+                    });
+                    services.Configure<ForwardedHeadersOptions>(options =>
+                    {
+                        options.ForwardedHeaders =
+                            ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
                     });
                     services.AddMagicOnion();
                     services.AddSingleton(provider =>
@@ -99,6 +110,7 @@ namespace NineChronicles.Headless
                     );
                     var options = MessagePackSerializerOptions.Standard.WithResolver(resolver);
                     MessagePackSerializer.DefaultOptions = options;
+                    
                 })
                 .ConfigureWebHostDefaults(hostBuilder =>
                 {

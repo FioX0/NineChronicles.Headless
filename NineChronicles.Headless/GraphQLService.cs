@@ -155,6 +155,8 @@ namespace NineChronicles.Headless
                     app.UseDeveloperExceptionPage();
                 }
 
+                app.UseForwardedHeaders();
+
                 // Capture requests
                 app.UseMiddleware<HttpCaptureMiddleware>();
 
