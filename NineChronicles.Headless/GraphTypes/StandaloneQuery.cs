@@ -112,7 +112,7 @@ namespace NineChronicles.Headless.GraphTypes
                         throw new InvalidOperationException("Store is not ready");
                     }
                     var transaction = store.GetTransaction(transactionId);
-                    var action = transaction.Actions?.FirstOrDefault() as IAction;
+                    var action = transaction.Actions?.Select(a => ToAction(a)).FirstOrDefault();
                     if (action == null)
                     {
                         throw new InvalidOperationException("Action is null.");
@@ -253,8 +253,8 @@ namespace NineChronicles.Headless.GraphTypes
                         }
                     }
 
-                    ArenaPlayerDigest ExtraMyArenaPlayerDigest = new ArenaPlayerDigest(avatarState, 
-                        myItemSlotState.Equipments, 
+                    ArenaPlayerDigest ExtraMyArenaPlayerDigest = new ArenaPlayerDigest(avatarState,
+                        myItemSlotState.Equipments,
                         myItemSlotState.Costumes,
                         runeStates);
                     ArenaPlayerDigest ExtraEnemyArenaPlayerDigest = new ArenaPlayerDigest(
