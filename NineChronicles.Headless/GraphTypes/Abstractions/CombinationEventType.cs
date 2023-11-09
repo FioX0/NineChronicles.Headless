@@ -5,7 +5,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
-using static Nekoyume.Action.ItemEnhancement;
+using static Nekoyume.Action.ItemEnhancement13;
 
 namespace NineChronicles.Headless.GraphTypes.Abstractions
 {
