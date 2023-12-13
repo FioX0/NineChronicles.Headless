@@ -62,7 +62,7 @@ namespace NineChronicles.Headless.Tests.GraphTypes
                 [1] = true,
                 [2] = false,
             };
-            _stateContext = new StateContext(GetMockState(), 1L);
+            _stateContext = new StateContext(GetMockState(), 1L, new StateMemoryCache());
             var minerPrivateKey = new PrivateKey();
             var initializeStates = new InitializeStates(
                 rankingState: new RankingState0(),
@@ -72,12 +72,12 @@ namespace NineChronicles.Headless.Tests.GraphTypes
                     .Add("address", RedeemCodeState.Address.Serialize())
                     .Add("map", Bencodex.Types.Dictionary.Empty)
                 ),
-                adminAddressState: new AdminState(new PrivateKey().ToAddress(), 1500000),
+                adminAddressState: new AdminState(new PrivateKey().Address, 1500000),
                 activatedAccountsState: new ActivatedAccountsState(),
 #pragma warning disable CS0618
                 // Use of obsolete method Currency.Legacy(): https://github.com/planetarium/lib9c/discussions/1319
                 goldCurrencyState:
-                new GoldCurrencyState(Currency.Legacy("NCG", 2, minerPrivateKey.ToAddress())),
+                new GoldCurrencyState(Currency.Legacy("NCG", 2, minerPrivateKey.Address)),
 #pragma warning restore CS0618
                 goldDistributions: Array.Empty<GoldDistribution>(),
                 tableSheets: new Dictionary<string, string>(),

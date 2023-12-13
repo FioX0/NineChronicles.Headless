@@ -31,9 +31,13 @@ namespace NineChronicles.Headless.GraphTypes
 {
     public class StandaloneQuery : ObjectGraphType
     {
-        public StandaloneQuery(StandaloneContext standaloneContext, IConfiguration configuration, ActionEvaluationPublisher publisher)
+        public StandaloneQuery(StandaloneContext standaloneContext, IConfiguration configuration, ActionEvaluationPublisher publisher, StateMemoryCache stateMemoryCache)
         {
             bool useSecretToken = configuration[GraphQLService.SecretTokenKey] is { };
+            if (Convert.ToBoolean(configuration.GetSection("Jwt")["EnableJwtAuthentication"]))
+            {
+                this.AuthorizeWith(GraphQLService.JwtPolicyKey);
+            }
 
             Field<NonNullGraphType<StateQuery>>(name: "stateQuery", arguments: new QueryArguments(
                 new QueryArgument<ByteStringType>
@@ -60,7 +64,8 @@ namespace NineChronicles.Headless.GraphTypes
                         {
                             BlockHash bh => chain[bh].Index,
                             null => chain.Tip!.Index,
-                        }
+                        },
+                        stateMemoryCache
                     );
                 }
             );
@@ -90,7 +95,7 @@ namespace NineChronicles.Headless.GraphTypes
                         {
                             BlockHash bh => chain[bh].Index,
                             null => chain.Tip!.Index,
-                        }
+                        }, stateMemoryCache
                     );
                 }
             );
@@ -469,7 +474,7 @@ namespace NineChronicles.Headless.GraphTypes
                             $"{nameof(StandaloneContext)}.{nameof(StandaloneContext.NineChroniclesNodeService)}.{nameof(StandaloneContext.NineChroniclesNodeService.MinerPrivateKey)} is null.");
                     }
 
-                    return standaloneContext.NineChroniclesNodeService.MinerPrivateKey.ToAddress();
+                    return standaloneContext.NineChroniclesNodeService.MinerPrivateKey.Address;
                 });
 
             Field<MonsterCollectionStatusType>(
@@ -501,7 +506,7 @@ namespace NineChronicles.Headless.GraphTypes
                                 $"{nameof(StandaloneContext)}.{nameof(StandaloneContext.NineChroniclesNodeService)}.{nameof(StandaloneContext.NineChroniclesNodeService.MinerPrivateKey)} is null.");
                         }
 
-                        agentAddress = standaloneContext.NineChroniclesNodeService!.MinerPrivateKey!.ToAddress();
+                        agentAddress = standaloneContext.NineChroniclesNodeService!.MinerPrivateKey!.Address;
                     }
                     else
                     {

@@ -119,7 +119,8 @@ namespace NineChronicles.Headless.Tests.GraphTypes
                 "",
                 0,
                 new RpcContext(),
-                new ConcurrentDictionary<string, Sentry.ITransaction>()
+                new ConcurrentDictionary<string, Sentry.ITransaction>(),
+                new StateMemoryCache()
             );
             services.AddSingleton(publisher);
             services.AddSingleton(StandaloneContextFx);
@@ -128,6 +129,7 @@ namespace NineChronicles.Headless.Tests.GraphTypes
             services.AddLibplanetExplorer();
             services.AddSingleton(ncService);
             services.AddSingleton(ncService.Store);
+            services.AddSingleton<StateMemoryCache>();
             ServiceProvider serviceProvider = services.BuildServiceProvider();
             Schema = new StandaloneSchema(serviceProvider);
 
@@ -136,7 +138,7 @@ namespace NineChronicles.Headless.Tests.GraphTypes
 
         protected PrivateKey AdminPrivateKey { get; } = new PrivateKey();
 
-        protected Address AdminAddress => AdminPrivateKey.ToAddress();
+        protected Address AdminAddress => AdminPrivateKey.Address;
 
         protected PrivateKey ProposerPrivateKey { get; } = new PrivateKey();
 
@@ -145,7 +147,7 @@ namespace NineChronicles.Headless.Tests.GraphTypes
             get => new List<PrivateKey>
             {
                 ProposerPrivateKey
-            }.OrderBy(key => key.ToAddress()).ToList();
+            }.OrderBy(key => key.Address).ToList();
         }
 
         protected StandaloneSchema Schema { get; }

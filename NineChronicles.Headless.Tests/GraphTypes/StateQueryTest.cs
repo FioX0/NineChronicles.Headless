@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Security.Cryptography;
@@ -15,6 +16,7 @@ using Nekoyume.Model.Elemental;
 using Nekoyume.Model.Garages;
 using Nekoyume.Model.Item;
 using Nekoyume.Model.State;
+using Nekoyume.TableData;
 using NineChronicles.Headless.GraphTypes;
 using NineChronicles.Headless.GraphTypes.States;
 using NineChronicles.Headless.Tests.Common;
@@ -143,7 +145,7 @@ namespace NineChronicles.Headless.Tests.GraphTypes
                 sb.ToString(),
                 source: new StateContext(
                     mockState,
-                    0L));
+                    0L, new StateMemoryCache()));
             Assert.Null(queryResult.Errors);
             var data = (Dictionary<string, object>)((ExecutionNode)queryResult.Data!).ToValue()!;
             var garages = (Dictionary<string, object>)data["garages"];
@@ -222,9 +224,41 @@ namespace NineChronicles.Headless.Tests.GraphTypes
             }
         }
 
+        [Theory]
+        [InlineData(true, "expected")]
+        [InlineData(false, null)]
+        public async Task CachedSheet(bool cached, string? expected)
+        {
+            var tableName = nameof(ItemRequirementSheet);
+            var cache = new StateMemoryCache();
+            var cacheKey = Addresses.GetSheetAddress(tableName).ToString();
+            if (cached)
+            {
+                cache.SheetCache.SetSheet(cacheKey, (Text)expected, TimeSpan.FromMinutes(1));
+            }
+            var query = $"{{ cachedSheet(tableName: \"{tableName}\") }}";
+            MockState mockState = MockState.Empty;
+            var queryResult = await ExecuteQueryAsync<StateQuery>(
+                query,
+                source: new StateContext(
+                    mockState,
+                    0L, cache));
+            Assert.Null(queryResult.Errors);
+            var data = (Dictionary<string, object>)((ExecutionNode)queryResult.Data!).ToValue()!;
+            Assert.Equal(cached, cache.SheetCache.TryGetValue(cacheKey, out _));
+            if (cached)
+            {
+                Assert.Equal(expected, data["cachedSheet"]);
+            }
+            else
+            {
+                Assert.Null(data["cachedSheet"]);
+            }
+        }
+
         private static IEnumerable<object[]> GetMemberDataOfGarages()
         {
-            var agentAddr = new PrivateKey().ToAddress();
+            var agentAddr = new PrivateKey().Address;
             yield return new object[]
             {
                 agentAddr,

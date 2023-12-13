@@ -13,6 +13,7 @@ using Lib9c;
 using Libplanet.Common;
 using Libplanet.Crypto;
 using Libplanet.Types.Assets;
+using Libplanet.Types.Tx;
 using Nekoyume;
 using Nekoyume.Action;
 using Nekoyume.Action.Garages;
@@ -51,11 +52,11 @@ namespace NineChronicles.Headless.Tests.GraphTypes
                     .Add("address", RedeemCodeState.Address.Serialize())
                     .Add("map", Bencodex.Types.Dictionary.Empty)
                 ),
-                adminAddressState: new AdminState(new PrivateKey().ToAddress(), 1500000),
+                adminAddressState: new AdminState(new PrivateKey().Address, 1500000),
                 activatedAccountsState: new ActivatedAccountsState(),
 #pragma warning disable CS0618
                 // Use of obsolete method Currency.Legacy(): https://github.com/planetarium/lib9c/discussions/1319
-                goldCurrencyState: new GoldCurrencyState(Currency.Legacy("NCG", 2, minerPrivateKey.ToAddress())),
+                goldCurrencyState: new GoldCurrencyState(Currency.Legacy("NCG", 2, minerPrivateKey.Address)),
 #pragma warning restore CS0618
                 goldDistributions: Array.Empty<GoldDistribution>(),
                 tableSheets: new Dictionary<string, string>(),
@@ -93,7 +94,7 @@ namespace NineChronicles.Headless.Tests.GraphTypes
         [Fact]
         public async Task ClaimStakeReward()
         {
-            var avatarAddress = new PrivateKey().ToAddress();
+            var avatarAddress = new PrivateKey().Address;
             string query = $@"
             {{
                 claimStakeReward(avatarAddress: ""{avatarAddress.ToString()}"")
@@ -110,7 +111,7 @@ namespace NineChronicles.Headless.Tests.GraphTypes
         [Fact]
         public async Task MigrateMonsterCollection()
         {
-            var avatarAddress = new PrivateKey().ToAddress();
+            var avatarAddress = new PrivateKey().Address;
             string query = $@"
             {{
                 migrateMonsterCollection(avatarAddress: ""{avatarAddress.ToString()}"")
@@ -149,7 +150,7 @@ namespace NineChronicles.Headless.Tests.GraphTypes
         [InlineData(null, false)]
         public async Task Grinding(string chargeApValue, bool chargeAp)
         {
-            var avatarAddress = new PrivateKey().ToAddress();
+            var avatarAddress = new PrivateKey().Address;
             var equipmentId = Guid.NewGuid();
             string queryArgs =
                 $"avatarAddress: \"{avatarAddress.ToString()}\", equipmentIds: [{string.Format($"\"{equipmentId}\"")}]";
@@ -179,7 +180,7 @@ namespace NineChronicles.Headless.Tests.GraphTypes
         [Fact]
         public async Task UnlockEquipmentRecipe()
         {
-            var avatarAddress = new PrivateKey().ToAddress();
+            var avatarAddress = new PrivateKey().Address;
             string query = $@"
             {{
                 unlockEquipmentRecipe(avatarAddress: ""{avatarAddress.ToString()}"", recipeIds: [2, 3])
@@ -206,7 +207,7 @@ namespace NineChronicles.Headless.Tests.GraphTypes
         [Fact]
         public async Task UnlockWorld()
         {
-            var avatarAddress = new PrivateKey().ToAddress();
+            var avatarAddress = new PrivateKey().Address;
             string query = $@"
             {{
                 unlockWorld(avatarAddress: ""{avatarAddress.ToString()}"", worldIds: [2, 3])
@@ -235,10 +236,10 @@ namespace NineChronicles.Headless.Tests.GraphTypes
         [InlineData("NCG", false)]
         [InlineData("CRYSTAL", true)]
         [InlineData("CRYSTAL", false)]
-        public async Task TransferAsset(string currencyType, bool memo)
+        public async Task TransferAssetWithCurrencyEnum(string currencyType, bool memo)
         {
-            var recipient = new PrivateKey().ToAddress();
-            var sender = new PrivateKey().ToAddress();
+            var recipient = new PrivateKey().Address;
+            var sender = new PrivateKey().Address;
             var args = $"recipient: \"{recipient}\", sender: \"{sender}\", amount: \"17.5\", currency: {currencyType}";
             if (memo)
             {
@@ -255,6 +256,49 @@ namespace NineChronicles.Headless.Tests.GraphTypes
             var rawState = _standaloneContext.BlockChain!.GetState(Addresses.GoldCurrency);
             var goldCurrencyState = new GoldCurrencyState((Dictionary)rawState);
             Currency currency = currencyType == "NCG" ? goldCurrencyState.Currency : CrystalCalculator.CRYSTAL;
+
+            Assert.Equal(recipient, action.Recipient);
+            Assert.Equal(sender, action.Sender);
+            Assert.Equal(FungibleAssetValue.Parse(currency, "17.5"), action.Amount);
+            if (memo)
+            {
+                Assert.Equal("memo", action.Memo);
+            }
+            else
+            {
+                Assert.Null(action.Memo);
+            }
+        }
+
+        [Theory]
+        [InlineData("{ ticker: \"NCG\", minters: [], decimalPlaces: 2 }", true)]
+        [InlineData("{ ticker: \"NCG\", minters: [], decimalPlaces: 2 }", false)]
+        [InlineData("{ ticker: \"CRYSTAL\", minters: [], decimalPlaces: 18 }", true)]
+        [InlineData("{ ticker: \"CRYSTAL\", minters: [], decimalPlaces: 18 }", false)]
+        public async Task TransferAsset(string valueType, bool memo)
+        {
+            var rawState = _standaloneContext.BlockChain!.GetState(Addresses.GoldCurrency);
+            var goldCurrencyState = new GoldCurrencyState((Dictionary)rawState);
+
+            var recipient = new PrivateKey().Address;
+            var sender = new PrivateKey().Address;
+            var valueTypeWithMinter = valueType.Replace("[]",
+                valueType.Contains("NCG") ? $"[\"{goldCurrencyState.Currency.Minters.First()}\"]" : "[]");
+            var args = $"recipient: \"{recipient}\", sender: \"{sender}\", rawCurrency: {valueTypeWithMinter}, amount: \"17.5\"";
+            if (memo)
+            {
+                args += ", memo: \"memo\"";
+            }
+
+            var query = $"{{ transferAsset({args}) }}";
+            var queryResult = await ExecuteQueryAsync<ActionQuery>(query, standaloneContext: _standaloneContext);
+            var data = (Dictionary<string, object>)((ExecutionNode)queryResult.Data!).ToValue()!;
+            var plainValue = _codec.Decode(ByteUtil.ParseHex((string)data["transferAsset"]));
+            Assert.IsType<Dictionary>(plainValue);
+            var actionBase = DeserializeNCAction(plainValue);
+            var action = Assert.IsType<TransferAsset>(actionBase);
+
+            Currency currency = valueType.Contains("NCG") ? goldCurrencyState.Currency : CrystalCalculator.CRYSTAL;
 
             Assert.Equal(recipient, action.Recipient);
             Assert.Equal(sender, action.Sender);
@@ -338,7 +382,7 @@ namespace NineChronicles.Headless.Tests.GraphTypes
         [InlineData(false, false, false, false, true)]
         public async Task Raid(bool equipment, bool costume, bool food, bool payNcg, bool rune)
         {
-            var avatarAddress = new PrivateKey().ToAddress();
+            var avatarAddress = new PrivateKey().Address;
             var args = $"avatarAddress: \"{avatarAddress}\"";
             var guid = Guid.NewGuid();
             if (equipment)
@@ -422,7 +466,7 @@ namespace NineChronicles.Headless.Tests.GraphTypes
         [Fact]
         public async Task ClaimRaidReward()
         {
-            var avatarAddress = new PrivateKey().ToAddress();
+            var avatarAddress = new PrivateKey().Address;
             var query = $"{{ claimRaidReward(avatarAddress: \"{avatarAddress}\") }}";
             var queryResult = await ExecuteQueryAsync<ActionQuery>(query, standaloneContext: _standaloneContext);
             var data = (Dictionary<string, object>)((ExecutionNode)queryResult.Data!).ToValue()!;
@@ -437,7 +481,7 @@ namespace NineChronicles.Headless.Tests.GraphTypes
         [Fact]
         public async Task ClaimWorldBossKillReward()
         {
-            var avatarAddress = new PrivateKey().ToAddress();
+            var avatarAddress = new PrivateKey().Address;
             var query = $"{{ claimWorldBossKillReward(avatarAddress: \"{avatarAddress}\") }}";
             var queryResult = await ExecuteQueryAsync<ActionQuery>(query, standaloneContext: _standaloneContext);
             var data = (Dictionary<string, object>)((ExecutionNode)queryResult.Data!).ToValue()!;
@@ -454,7 +498,7 @@ namespace NineChronicles.Headless.Tests.GraphTypes
         [InlineData(false, 1)]
         public async Task PrepareRewardAssets(bool mintersExist, int expectedCount)
         {
-            var rewardPoolAddress = new PrivateKey().ToAddress();
+            var rewardPoolAddress = new PrivateKey().Address;
             var assets = "{quantity: 100, decimalPlaces: 0, ticker: \"CRYSTAL\"}";
             if (mintersExist)
             {
@@ -492,7 +536,7 @@ namespace NineChronicles.Headless.Tests.GraphTypes
         [InlineData(false)]
         public async Task TransferAssets(bool exc)
         {
-            var sender = new PrivateKey().ToAddress();
+            var sender = new PrivateKey().Address;
             var recipients =
                 $"{{ recipient: \"{sender}\", amount: {{ quantity: 100, decimalPlaces: 18, ticker: \"CRYSTAL\" }} }}, {{ recipient: \"{sender}\", amount: {{ quantity: 100, decimalPlaces: 0, ticker: \"RUNE_FENRIR1\" }} }}";
             if (exc)
@@ -634,7 +678,7 @@ namespace NineChronicles.Headless.Tests.GraphTypes
         [InlineData(1001, -1, false)]
         public async Task RuneEnhancement(int runeId, int? tryCount, bool isSuccessCase)
         {
-            var avatarAddress = new PrivateKey().ToAddress();
+            var avatarAddress = new PrivateKey().Address;
             var args = $"avatarAddress: \"{avatarAddress}\", runeId: {runeId}";
             if (tryCount is not null)
             {
@@ -668,7 +712,7 @@ namespace NineChronicles.Headless.Tests.GraphTypes
         [InlineData(true, true, true, true, true)]
         public async Task HackAndSlash(bool useCostume, bool useEquipment, bool useFood, bool useRune, bool useBuff)
         {
-            var avatarAddress = new PrivateKey().ToAddress();
+            var avatarAddress = new PrivateKey().Address;
             var worldId = 1;
             var stageId = 1;
             var costume = Guid.NewGuid();
@@ -750,7 +794,7 @@ namespace NineChronicles.Headless.Tests.GraphTypes
         [InlineData(true, true, true, true)]
         public async Task HackAndSlashSweep(bool useCostume, bool useEquipment, bool useRune, bool useApStone)
         {
-            var avatarAddress = new PrivateKey().ToAddress();
+            var avatarAddress = new PrivateKey().Address;
             var worldId = 1;
             var stageId = 1;
             var costume = Guid.NewGuid();
@@ -819,7 +863,7 @@ actionPoint: {actionPoint},
         [Fact]
         public async Task DailyReward()
         {
-            var avatarAddress = new PrivateKey().ToAddress();
+            var avatarAddress = new PrivateKey().Address;
             var query = $"{{dailyReward(avatarAddress: \"{avatarAddress}\")}}";
             var queryResult = await ExecuteQueryAsync<ActionQuery>(query, standaloneContext: _standaloneContext);
             Assert.Null(queryResult.Errors);
@@ -837,7 +881,7 @@ actionPoint: {actionPoint},
         [InlineData(false)]
         public async Task CombinationEquipment(bool useSubRecipe)
         {
-            var avatarAddress = new PrivateKey().ToAddress();
+            var avatarAddress = new PrivateKey().Address;
             var slotIndex = 0;
             var recipeId = 1;
             var subRecipeId = 10;
@@ -880,7 +924,7 @@ actionPoint: {actionPoint},
         [Fact]
         public async Task ItemEnhancement()
         {
-            var avatarAddress = new PrivateKey().ToAddress();
+            var avatarAddress = new PrivateKey().Address;
             var slotIndex = 0;
             var itemId = Guid.NewGuid();
             var materialIds = new List<Guid> { Guid.NewGuid() };
@@ -910,7 +954,7 @@ actionPoint: {actionPoint},
         [Fact]
         public async Task RapidCombination()
         {
-            var avatarAddress = new PrivateKey().ToAddress();
+            var avatarAddress = new PrivateKey().Address;
             var slotIndex = 0;
 
             var query = $"{{rapidCombination(avatarAddress: \"{avatarAddress}\", slotIndex: {slotIndex})}}";
@@ -929,7 +973,7 @@ actionPoint: {actionPoint},
         [Fact]
         public async Task CombinationConsumable()
         {
-            var avatarAddress = new PrivateKey().ToAddress();
+            var avatarAddress = new PrivateKey().Address;
             var slotIndex = 0;
             var recipeId = 1;
 
@@ -953,7 +997,7 @@ actionPoint: {actionPoint},
         [InlineData(100, 100)]
         public async Task RequestPledge(int? mead, int expected)
         {
-            var agentAddress = new PrivateKey().ToAddress();
+            var agentAddress = new PrivateKey().Address;
 
             var query = mead.HasValue
                 ? $"{{requestPledge(agentAddress: \"{agentAddress}\", mead: {mead})}}"
@@ -973,7 +1017,7 @@ actionPoint: {actionPoint},
         [Fact]
         public async Task ApprovePledge()
         {
-            var patronAddress = new PrivateKey().ToAddress();
+            var patronAddress = new PrivateKey().Address;
 
             var query = $"{{approvePledge(patronAddress: \"{patronAddress}\")}}";
             var queryResult = await ExecuteQueryAsync<ActionQuery>(query, standaloneContext: _standaloneContext);
@@ -990,7 +1034,7 @@ actionPoint: {actionPoint},
         [Fact]
         public async Task EndPledge()
         {
-            var agentAddress = new PrivateKey().ToAddress();
+            var agentAddress = new PrivateKey().Address;
 
             var query = $"{{endPledge(agentAddress: \"{agentAddress}\")}}";
             var queryResult = await ExecuteQueryAsync<ActionQuery>(query, standaloneContext: _standaloneContext);
@@ -1009,7 +1053,7 @@ actionPoint: {actionPoint},
         [InlineData(1, 1)]
         public async Task CreatePledge(int? mead, int expected)
         {
-            var agentAddress = new PrivateKey().ToAddress();
+            var agentAddress = new PrivateKey().Address;
 
             var query = mead.HasValue
                 ? $"{{createPledge(patronAddress: \"{MeadConfig.PatronAddress}\", agentAddresses: [\"{agentAddress}\"], mead: {mead})}}"
@@ -1109,15 +1153,15 @@ actionPoint: {actionPoint},
                 new[]
                 {
                     (
-                        address: new PrivateKey().ToAddress(),
+                        address: new PrivateKey().Address,
                         fungibleAssetValue: new FungibleAssetValue(Currencies.Garage, 1, 0)
                     ),
                     (
-                        address: new PrivateKey().ToAddress(),
+                        address: new PrivateKey().Address,
                         fungibleAssetValue: new FungibleAssetValue(Currencies.Garage, 1, 0)
                     ),
                 },
-                new PrivateKey().ToAddress(),
+                new PrivateKey().Address,
                 new[]
                 {
                     (fungibleId: new HashDigest<SHA256>(), count: 1),
@@ -1194,14 +1238,14 @@ actionPoint: {actionPoint},
         {
             yield return new object[]
             {
-                new PrivateKey().ToAddress(),
+                new PrivateKey().Address,
                 null,
                 null,
                 null,
             };
             yield return new object[]
             {
-                new PrivateKey().ToAddress(),
+                new PrivateKey().Address,
                 new[]
                 {
                     new FungibleAssetValue(Currencies.Garage, 1, 0),
@@ -1284,22 +1328,22 @@ actionPoint: {actionPoint},
         {
             yield return new object[]
             {
-                new PrivateKey().ToAddress(),
+                new PrivateKey().Address,
                 null,
                 null,
                 null,
             };
             yield return new object[]
             {
-                new PrivateKey().ToAddress(),
+                new PrivateKey().Address,
                 new[]
                 {
                     (
-                        address: new PrivateKey().ToAddress(),
+                        address: new PrivateKey().Address,
                         fungibleAssetValue: new FungibleAssetValue(Currencies.Garage, 1, 0)
                     ),
                     (
-                        address: new PrivateKey().ToAddress(),
+                        address: new PrivateKey().Address,
                         fungibleAssetValue: new FungibleAssetValue(Currencies.Garage, 1, 0)
                     ),
                 },
@@ -1316,7 +1360,7 @@ actionPoint: {actionPoint},
         public async Task AuraSummon()
         {
             var random = new Random();
-            var avatarAddress = new PrivateKey().ToAddress();
+            var avatarAddress = new PrivateKey().Address;
             var groupId = random.Next(10001, 10002 + 1);
             // FIXME: Change 10 to AuraSummon.SummonLimit
             var summonCount = random.Next(1, 10 + 1);
@@ -1335,6 +1379,141 @@ actionPoint: {actionPoint},
             Assert.IsType<Dictionary>(plainValue);
             var actionBase = DeserializeNCAction(plainValue);
             var action = Assert.IsType<AuraSummon>(actionBase);
+
+            Assert.Equal(avatarAddress, action.AvatarAddress);
+            Assert.Equal(groupId, action.GroupId);
+            Assert.Equal(summonCount, action.SummonCount);
+        }
+
+        [Theory]
+        [InlineData(1, false)]
+        [InlineData(2, false)]
+        [InlineData(10, false)]
+        [InlineData(100, false)]
+        [InlineData(1, true)]
+        [InlineData(2, true)]
+        [InlineData(10, true)]
+        [InlineData(100, true)]
+        public async Task ClaimItems(int claimDataCount, bool hasMemo)
+        {
+            var random = new Random();
+            var tickerList = new List<string> { "Item_T_500000", "Item_T_400000", "Item_T_800201", "Item_NT_49900011" };
+            var claimDataList = new List<(Address, List<FungibleAssetValue>)>();
+            var queryBuilder = new StringBuilder().Append("{claimItems(claimData: [");
+            var expectedMemo = "This is test memo";
+            for (var i = 0; i < claimDataCount; i++)
+            {
+                var avatarAddress = new PrivateKey().Address;
+                var currencyCount = random.Next(1, tickerList.Count + 1);
+                var tickerCandidates = tickerList.OrderBy(i => random.Next()).Take(currencyCount);
+                queryBuilder.Append($@"{{
+                    avatarAddress: ""{avatarAddress}"",
+                    fungibleAssetValues:[
+                ");
+                var favList = tickerCandidates.Select(
+                    ticker => new FungibleAssetValue(
+                        Currency.Uncapped(
+                            ticker: ticker,
+                            decimalPlaces: 0,
+                            minters: AddressSet.Empty
+                        ),
+                        random.Next(1, 100), 0
+                    )
+                ).ToList();
+                foreach (var fav in favList)
+                {
+                    queryBuilder.Append($@"{{
+                        ticker: ""{fav.Currency.Ticker}"",
+                        decimalPlaces: 0,
+                        minters: [],
+                        quantity: {fav.MajorUnit}
+                    }}");
+                    if (fav != favList[^1])
+                    {
+                        queryBuilder.Append(",");
+                    }
+                }
+
+                claimDataList.Add((avatarAddress, favList));
+
+                queryBuilder.Append("]}");
+                if (i < claimDataCount - 1)
+                {
+                    queryBuilder.Append(",");
+                }
+            }
+
+            queryBuilder.Append("]");
+
+            if (hasMemo)
+            {
+                queryBuilder.Append($", memo: \"{expectedMemo}\"");
+            }
+
+            queryBuilder.Append(")}");
+
+            var queryResult =
+                await ExecuteQueryAsync<ActionQuery>(queryBuilder.ToString(), standaloneContext: _standaloneContext);
+            var data = (Dictionary<string, object>)((ExecutionNode)queryResult.Data!).ToValue()!;
+            var plainValue = _codec.Decode(ByteUtil.ParseHex((string)data["claimItems"]));
+            Assert.IsType<Dictionary>(plainValue);
+            var actionBase = DeserializeNCAction(plainValue);
+            var action = Assert.IsType<ClaimItems>(actionBase);
+
+            for (var i = 0; i < claimDataList.Count; i++)
+            {
+                var (expectedAddr, expectedFavList) = claimDataList[i];
+                var (actualAddr, actualFavList) = action.ClaimData[i];
+                Assert.Equal(expectedAddr, actualAddr);
+                Assert.Equal(expectedFavList.Count, actualFavList.Count);
+                for (var j = 0; j < expectedFavList.Count; j++)
+                {
+                    /* FIXME: Make Assert.Equal(FAV1, FAV2) works.
+                     This test will fail because:
+                         - GQL currency type does not allow `null` as minters to you should give empty list.
+                         - But inside `Currency`, empty list is changed to null.
+                         - As a result, currency hash are mismatch.
+                         - See https://github.com/planetarium/NineChronicles.Headless/pull/2282#discussion_r1380857437
+                    */
+                    // Assert.Equal(expectedFavList[i], actualFavList[i]);
+                    Assert.Equal(expectedFavList[j].Currency.Ticker, actualFavList[j].Currency.Ticker);
+                    Assert.Equal(expectedFavList[j].RawValue, actualFavList[j].RawValue);
+                }
+            }
+
+            if (hasMemo)
+            {
+                Assert.Equal(expectedMemo, action.Memo);
+            }
+            else
+            {
+                Assert.Null(action.Memo);
+            }
+        }
+
+        [Fact]
+        public async Task RuneSummon()
+        {
+            var random = new Random();
+            var avatarAddress = new PrivateKey().Address;
+            var groupId = random.Next(20001, 20002 + 1);
+            // FIXME: Change 10 to AuraSummon.SummonLimit
+            var summonCount = random.Next(1, 10 + 1);
+
+            var query = $@"{{
+                runeSummon(
+                    avatarAddress: ""{avatarAddress}"",
+                    groupId: {groupId},
+                    summonCount: {summonCount}
+                )
+            }}";
+
+            var queryResult = await ExecuteQueryAsync<ActionQuery>(query, standaloneContext: _standaloneContext);
+            var data = (Dictionary<string, object>)((ExecutionNode)queryResult.Data!).ToValue()!;
+            var plainValue = _codec.Decode(ByteUtil.ParseHex((string)data["runeSummon"]));
+            Assert.IsType<Dictionary>(plainValue);
+            var actionBase = DeserializeNCAction(plainValue);
+            var action = Assert.IsType<RuneSummon>(actionBase);
 
             Assert.Equal(avatarAddress, action.AvatarAddress);
             Assert.Equal(groupId, action.GroupId);

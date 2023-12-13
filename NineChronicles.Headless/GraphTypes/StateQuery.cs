@@ -2,6 +2,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Bencodex;
 using Bencodex.Types;
 using GraphQL;
 using GraphQL.Types;
@@ -12,7 +13,6 @@ using Libplanet.Explorer.GraphTypes;
 using Nekoyume;
 using Nekoyume.Action;
 using Nekoyume.Arena;
-using Nekoyume.Battle;
 using Nekoyume.Extensions;
 using Nekoyume.Model;
 using Nekoyume.Model.Arena;
@@ -36,6 +36,8 @@ namespace NineChronicles.Headless.GraphTypes
 {
     public partial class StateQuery : ObjectGraphType<StateContext>
     {
+        private readonly Codec _codec = new Codec();
+
         public StateQuery()
         {
             Name = "StateQuery";
@@ -47,7 +49,7 @@ namespace NineChronicles.Headless.GraphTypes
                     return new AvatarStateType.AvatarStateContext(
                         context.AccountState.GetAvatarState(address),
                         context.AccountState,
-                        context.BlockIndex);
+                        context.BlockIndex ?? 0, context.StateMemoryCache);
                 }
                 catch (InvalidAddressException)
                 {
@@ -238,7 +240,8 @@ namespace NineChronicles.Headless.GraphTypes
                         return new AgentStateType.AgentStateContext(
                             new AgentState(state),
                             context.Source.AccountState,
-                            context.Source.BlockIndex
+                            context.Source.BlockIndex ?? 0,
+                            context.Source.StateMemoryCache
                         );
                     }
 
@@ -255,7 +258,8 @@ namespace NineChronicles.Headless.GraphTypes
                         stakeStateV2,
                         stakeStateAddress,
                         ctx.AccountState,
-                        ctx.BlockIndex.Value
+                        ctx.BlockIndex.Value,
+                        ctx.StateMemoryCache
                     );
                 }
 
@@ -1005,6 +1009,123 @@ namespace NineChronicles.Headless.GraphTypes
             );
 
             RegisterGarages();
+
+            Field<NonNullGraphType<ListGraphType<ArenaParticipantType>>>(
+                "arenaParticipants",
+                arguments: new QueryArguments(
+                    new QueryArgument<NonNullGraphType<AddressType>>
+                    {
+                        Name = "avatarAddress"
+                    },
+                    new QueryArgument<NonNullGraphType<BooleanGraphType>>
+                    {
+                        Name = "filterBounds",
+                        DefaultValue = true,
+                    }
+                ),
+                resolve: context =>
+                {
+                    // Copy from NineChronicles RxProps.Arena
+                    // https://github.com/planetarium/NineChronicles/blob/80.0.1/nekoyume/Assets/_Scripts/State/RxProps.Arena.cs#L279
+                    var blockIndex = context.Source.BlockIndex ?? 0;
+                    var currentAvatarAddr = context.GetArgument<Address>("avatarAddress");
+                    var filterBounds = context.GetArgument<bool>("filterBounds");
+                    var currentRoundData = context.Source.AccountState.GetSheet<ArenaSheet>().GetRoundByBlockIndex(blockIndex);
+                    int playerScore = ArenaScore.ArenaScoreDefault;
+                    var cacheKey = $"{currentRoundData.ChampionshipId}_{currentRoundData.Round}";
+                    List<ArenaParticipant> result = new();
+                    var scoreAddr = ArenaScore.DeriveAddress(currentAvatarAddr, currentRoundData.ChampionshipId, currentRoundData.Round);
+                    var scoreState = context.Source.GetState(scoreAddr);
+                    if (scoreState is List scores)
+                    {
+                        playerScore = (Integer)scores[1];
+                    }
+                    if (context.Source.StateMemoryCache.ArenaParticipantsCache.TryGetValue(cacheKey,
+                            out var cachedResult))
+                    {
+                        result = (cachedResult as List<ArenaParticipant>)!;
+                        foreach (var arenaParticipant in result)
+                        {
+                            var (win, lose, _) = ArenaHelper.GetScores(playerScore, arenaParticipant.Score);
+                            arenaParticipant.WinScore = win;
+                            arenaParticipant.LoseScore = lose;
+                        }
+                    }
+
+                    if (filterBounds)
+                    {
+                        result = GetBoundsWithPlayerScore(result, currentRoundData.ArenaType, playerScore);
+                    }
+
+                    return result;
+                }
+            );
+
+            Field<StringGraphType>(
+                name: "cachedSheet",
+                arguments: new QueryArguments(
+                    new QueryArgument<NonNullGraphType<StringGraphType>>
+                    {
+                        Name = "tableName"
+                    }
+                ),
+                resolve: context =>
+                {
+                    var tableName = context.GetArgument<string>("tableName");
+                    var cacheKey = Addresses.GetSheetAddress(tableName).ToString();
+                    return context.Source.StateMemoryCache.SheetCache.GetSheet(cacheKey);
+                }
+            );
+        }
+
+        public static List<RuneOptionSheet.Row.RuneOptionInfo> GetRuneOptions(
+            List<RuneState> runeStates,
+            RuneOptionSheet sheet)
+        {
+            var result = new List<RuneOptionSheet.Row.RuneOptionInfo>();
+            foreach (var runeState in runeStates)
+            {
+                if (!sheet.TryGetValue(runeState.RuneId, out var row))
+                {
+                    continue;
+                }
+
+                if (!row.LevelOptionMap.TryGetValue(runeState.Level, out var statInfo))
+                {
+                    continue;
+                }
+
+                result.Add(statInfo);
+            }
+
+            return result;
+        }
+
+        public static List<ArenaParticipant> GetBoundsWithPlayerScore(
+            List<ArenaParticipant> arenaInformation,
+            ArenaType arenaType,
+            int playerScore)
+        {
+            var bounds = ArenaHelper.ScoreLimits.ContainsKey(arenaType)
+                ? ArenaHelper.ScoreLimits[arenaType]
+                : ArenaHelper.ScoreLimits.First().Value;
+
+            bounds = (bounds.upper + playerScore, bounds.lower + playerScore);
+            return arenaInformation
+                .Where(a => a.Score <= bounds.upper && a.Score >= bounds.lower)
+                .ToList();
+        }
+
+        public static int GetPortraitId(List<Equipment?> equipments, List<Costume?> costumes)
+        {
+            var fullCostume = costumes.FirstOrDefault(x => x?.ItemSubType == ItemSubType.FullCostume);
+            if (fullCostume != null)
+            {
+                return fullCostume.Id;
+            }
+
+            var armor = equipments.FirstOrDefault(x => x?.ItemSubType == ItemSubType.Armor);
+            return armor?.Id ?? GameConfig.DefaultAvatarArmorId;
         }
     }
 }
