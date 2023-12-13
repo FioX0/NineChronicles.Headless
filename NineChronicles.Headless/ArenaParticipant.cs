@@ -12,7 +12,7 @@ public class ArenaParticipant
     public int LoseScore;
     public readonly int Cp;
     public readonly int PortraitId;
-    public readonly string NameWithHash;
+    public readonly string Name;
     public readonly int Level;
 
     public ArenaParticipant(
@@ -32,7 +32,7 @@ public class ArenaParticipant
         LoseScore = loseScore;
         Cp = cp;
         PortraitId = portraitId;
-        NameWithHash = avatarState.name;
+        Name = avatarState.name;
         Level = avatarState.level;
     }
 }

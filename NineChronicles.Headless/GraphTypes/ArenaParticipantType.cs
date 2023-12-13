@@ -40,8 +40,8 @@ public class ArenaParticipantType : ObjectGraphType<ArenaParticipant>
             description: "Level of avatar.",
             resolve: context => context.Source.Level);
         Field<NonNullGraphType<StringGraphType>>(
-            nameof(ArenaParticipant.NameWithHash),
+            nameof(ArenaParticipant.Name),
             description: "Name of avatar.",
-            resolve: context => context.Source.NameWithHash);
+            resolve: context => context.Source.Name);
     }
 }
