@@ -32,7 +32,7 @@ public class ArenaParticipant
         LoseScore = loseScore;
         Cp = cp;
         PortraitId = portraitId;
-        NameWithHash = avatarState.NameWithHash;
+        NameWithHash = avatarState.name;
         Level = avatarState.level;
     }
 }

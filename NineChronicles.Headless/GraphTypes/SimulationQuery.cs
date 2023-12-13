@@ -362,7 +362,7 @@ namespace NineChronicles.Headless.GraphTypes
                         ArenaSimulationResult arenaResult = new ArenaSimulationResult();
                         arenaResult.seed = rnd.Next();
                         LocalRandom iRandom = new LocalRandom(arenaResult.seed);
-                        var simulator = new ArenaSimulator(iRandom);
+                        var simulator = new ArenaSimulator(iRandom, 5);
                         var log = simulator.Simulate(
                             myArenaPlayerDigest,
                             enemyArenaPlayerDigest,

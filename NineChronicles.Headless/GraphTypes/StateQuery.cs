@@ -49,7 +49,7 @@ namespace NineChronicles.Headless.GraphTypes
                     return new AvatarStateType.AvatarStateContext(
                         context.AccountState.GetAvatarState(address),
                         context.AccountState,
-                        context.BlockIndex ?? 0, context.StateMemoryCache);
+                        context.BlockIndex!.Value, context.StateMemoryCache);
                 }
                 catch (InvalidAddressException)
                 {
@@ -240,7 +240,7 @@ namespace NineChronicles.Headless.GraphTypes
                         return new AgentStateType.AgentStateContext(
                             new AgentState(state),
                             context.Source.AccountState,
-                            context.Source.BlockIndex ?? 0,
+                            context.Source.BlockIndex!.Value,
                             context.Source.StateMemoryCache
                         );
                     }
@@ -759,6 +759,110 @@ namespace NineChronicles.Headless.GraphTypes
                         return null;
                     }                   
             });
+
+            Field<ChampionshipArenaStateType>(
+                name: "championshipArenaWITHCACHE",
+                description: "State for championShip arena.",
+                resolve: context =>
+                {
+                    try {
+                        var blockIndex = context.Source.BlockIndex!.Value;
+                        var currentRoundData = context.Source.AccountState.GetSheet<ArenaSheet>().GetRoundByBlockIndex(blockIndex);
+                        List<ArenaParticipant> arenaParticipants = new();
+                        var sheets = AccountStateExtensions.GetSheets(context.Source.AccountState, sheetTypes: new[]
+                        {
+                            typeof(ArenaSheet),
+                            typeof(CharacterSheet),
+                            typeof(CostumeStatSheet),
+                            typeof(RuneListSheet),
+                            typeof(RuneOptionSheet)
+                        });
+                        var arenaSheet = sheets.FirstOrDefault().Value.sheet as ArenaSheet;
+                        var cacheKey = $"{currentRoundData.ChampionshipId}_{currentRoundData.Round}";
+
+
+                        if (arenaSheet == null || !arenaSheet.TryGetValue(currentRoundData.ChampionshipId, out var arenaRow))
+                        {
+                            throw new SheetRowNotFoundException(nameof(ArenaSheet),
+                                $"championship Id : {currentRoundData.ChampionshipId}");
+                        }
+                        if (!arenaRow.TryGetRound(currentRoundData.Round, out var roundData))
+                        {
+                            throw new RoundNotFoundException(
+                                $"[{nameof(BattleArena)}] ChampionshipId({arenaRow.ChampionshipId}) - round({currentRoundData.Round})");
+                        }
+
+                        if (context.Source.StateMemoryCache.ArenaParticipantsCache.TryGetValue(cacheKey,
+                            out var cachedResult))
+                        {
+                            arenaParticipants = (cachedResult as List<ArenaParticipant>)!;
+                        }
+
+                        var arenaParticipantsAdr =
+                            ArenaParticipants.DeriveAddress(roundData.ChampionshipId, roundData.Round);
+
+                        var championshipInfo = new ChampionshipArenaState();
+                        championshipInfo.StartIndex = roundData.StartBlockIndex;
+                        championshipInfo.EndIndex = roundData.EndBlockIndex;
+                        championshipInfo.Address = arenaParticipantsAdr;
+                        List<ChampionArenaInfo> arenaInformations = new List<ChampionArenaInfo>();
+                        var gameConfigState = AccountStateExtensions.GetGameConfigState(context.Source.AccountState);
+                        var interval = gameConfigState.DailyArenaInterval;
+                        var currentTicketResetCount = ArenaHelper.GetCurrentTicketResetCount(
+                                        context.Source.BlockIndex!.Value, roundData.StartBlockIndex, interval);
+                        foreach (var participant in arenaParticipants)
+                        {
+                           
+                            var arenaInformationAdr =
+                                ArenaInformation.DeriveAddress(participant.AvatarAddr, roundData.ChampionshipId, roundData.Round);
+                            if (!AccountStateExtensions.TryGetArenaInformation(context.Source.AccountState, arenaInformationAdr, out var arenaInformation))
+                            {
+                                continue;
+                            }
+                            var ticket = arenaInformation.Ticket;
+                            if (ticket == 0 && arenaInformation.TicketResetCount < currentTicketResetCount)
+                            {
+                                ticket = 8;
+                            }
+                            var avatar = AccountStateExtensions.GetAvatarStateV2(context.Source.AccountState, participant.AvatarAddr);
+                          
+
+                            var arenaInfo = new ChampionArenaInfo
+                            {
+                                AvatarAddress = participant.AvatarAddr,
+                                AgentAddress = avatar.agentAddress,
+                                AvatarName = avatar.name,
+                                Win = arenaInformation.Win,
+                                Ticket = ticket,
+                                Lose = arenaInformation.Lose,
+                                Score = participant.Score,
+                                PurchasedTicketCount = arenaInformation.PurchasedTicketCount,
+                                TicketResetCount = arenaInformation.TicketResetCount,
+                                Active = true,
+                                CP = participant.Cp
+                            };
+                            arenaInformations.Add(arenaInfo);
+                        }
+
+                        var ranks = StateContext.AddRank(arenaInformations.ToArray());
+                        foreach (var rank in ranks)
+                        {
+                            var info = arenaInformations.First(a => a.AvatarAddress == rank.AvatarAddress);
+                            if (info != null)
+                            {
+                                info.Rank = rank.Rank;
+                            }
+                        }
+                        var orderInfos = arenaInformations.OrderBy(a => a.Rank).ToList();
+                        championshipInfo.OrderedArenaInfos = orderInfos;
+                        return championshipInfo;
+                    }
+                    catch(Exception ex){
+                        Console.WriteLine("Arena Exception = " + ex.Message);
+                        return null;
+                    }                   
+            });
+
             Field<CombinationCrystalStateType>(
                 "CraftCrystalCheck",
                 description: "Allows you to pull data",
@@ -1027,7 +1131,7 @@ namespace NineChronicles.Headless.GraphTypes
                 {
                     // Copy from NineChronicles RxProps.Arena
                     // https://github.com/planetarium/NineChronicles/blob/80.0.1/nekoyume/Assets/_Scripts/State/RxProps.Arena.cs#L279
-                    var blockIndex = context.Source.BlockIndex ?? 0;
+                    var blockIndex = context.Source.BlockIndex!.Value;
                     var currentAvatarAddr = context.GetArgument<Address>("avatarAddress");
                     var filterBounds = context.GetArgument<bool>("filterBounds");
                     var currentRoundData = context.Source.AccountState.GetSheet<ArenaSheet>().GetRoundByBlockIndex(blockIndex);

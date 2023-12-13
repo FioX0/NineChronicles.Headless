@@ -95,7 +95,8 @@ namespace NineChronicles.Headless.GraphTypes
                         {
                             BlockHash bh => chain[bh].Index,
                             null => chain.Tip!.Index,
-                        }, stateMemoryCache
+                        },
+                        stateMemoryCache
                     );
                 }
             );
@@ -168,7 +169,7 @@ namespace NineChronicles.Headless.GraphTypes
                     ^ BitConverter.ToInt32(hashedSignature, 0);
 
                     var random = new LocalRandom(seed);
-                    var simulator = new Nekoyume.Arena.ArenaSimulator(random);
+                    var simulator = new Nekoyume.Arena.ArenaSimulator(random, 5);
 
                     var previousHash = header.PreviousHash;
                     if (!(previousHash is BlockHash))
