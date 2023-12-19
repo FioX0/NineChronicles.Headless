@@ -1060,6 +1060,69 @@ namespace NineChronicles.Headless.GraphTypes
                 }
             );
             
+            Field<NonNullGraphType<ByteStringType>>(
+                name: "BattleArena",
+                arguments: new QueryArguments(
+                    new QueryArgument<NonNullGraphType<AddressType>>
+                    {
+                        Name = "avatarAddress",
+                        Description = "Avatar address."
+                    },
+                    new QueryArgument<NonNullGraphType<AddressType>>
+                    {
+                        Name = "enemyAvatarAddress",
+                        Description = "Enemy Avatar address."
+                    }
+                ),
+                resolve: context =>
+                {
+                    Address myAvatarAddress = context.GetArgument<Address>("avatarAddress");
+                    Address enemyAvatarAddress = context.GetArgument<Address>("enemyAvatarAddress");
+                    List<Guid> costumeIds = context.GetArgument<List<Guid>>("costumeIds") ?? new List<Guid>();
+                    List<Guid> equipmentIds = context.GetArgument<List<Guid>>("equipmentIds") ?? new List<Guid>();
+                    
+                    var blockIndex = context.Source.BlockIndex!.Value;
+                    var currentRoundData = context.Source.AccountState.GetSheet<ArenaSheet>().GetRoundByBlockIndex(blockIndex);
+
+                    var myAvatar = AccountStateExtensions.GetAvatarStateV2(context.Source.AccountState, myAvatarAddress);
+                    var myArenaAvatarStateAdr = ArenaAvatarState.DeriveAddress(myAvatarAddress);
+                    var myArenaAvatarState = AccountStateExtensions.GetArenaAvatarState(context.Source.AccountState, myArenaAvatarStateAdr, myAvatar);
+                    var myAvatarEquipments = myAvatar.inventory.Equipments;
+                    var myAvatarCostumes = myAvatar.inventory.Costumes;
+                    List<Guid> myArenaEquipementList = myAvatarEquipments.Where(f=>myArenaAvatarState.Equipments.Contains(f.ItemId)).Select(n => n.ItemId).ToList();
+                    List<Guid> myArenaCostumeList = myAvatarCostumes.Where(f=>myArenaAvatarState.Costumes.Contains(f.ItemId)).Select(n => n.ItemId).ToList();
+
+                    var myRuneSlotStateAddress = RuneSlotState.DeriveAddress(myAvatarAddress, BattleType.Arena);
+                    var myRuneSlotState = AccountStateExtensions.TryGetState(context.Source.AccountState, myRuneSlotStateAddress, out List myRawRuneSlotState)
+                        ? new RuneSlotState(myRawRuneSlotState)
+                        : new RuneSlotState(BattleType.Arena);
+
+                    var myRuneStates = new List<RuneState>();
+                    var myRuneSlotInfos = myRuneSlotState.GetEquippedRuneSlotInfos();
+                    foreach (var address in myRuneSlotInfos.Select(info => RuneState.DeriveAddress(myAvatarAddress, info.RuneId)))
+                    {
+                        if (AccountStateExtensions.TryGetState(context.Source.AccountState, address, out List rawRuneState))
+                        {
+                            myRuneStates.Add(new RuneState(rawRuneState));
+                        }
+                    }
+
+                    ActionBase action = new BattleArena
+                    {
+                        myAvatarAddress = myAvatarAddress,
+                        enemyAvatarAddress = enemyAvatarAddress,
+                        championshipId = currentRoundData.ChampionshipId,
+                        costumes = myArenaCostumeList,
+                        equipments = myArenaEquipementList,
+                        round = currentRoundData.Round,
+                        ticket = 1,
+                        runeInfos = myRuneSlotInfos
+                    };                  
+
+                    return _codec.Encode(action.PlainValue);
+                }
+            );
+            
             Field<RuneStateType>(
                 "RuneSlot",
                 description: "Grab Rune Slot Data",
