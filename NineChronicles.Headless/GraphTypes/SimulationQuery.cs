@@ -366,7 +366,8 @@ namespace NineChronicles.Headless.GraphTypes
                         var log = simulator.Simulate(
                             myArenaPlayerDigest,
                             enemyArenaPlayerDigest,
-                            arenaSheets);
+                            arenaSheets,
+                            true);
                         if(log.Result.ToString() == "Win")
                         {
                             arenaResult.win = true;
