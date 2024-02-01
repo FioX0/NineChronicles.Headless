@@ -58,13 +58,13 @@ namespace NineChronicles.Headless.Middleware
             // Prevent to harm HTTP/2 communication.
             if (context.Request.Protocol == "HTTP/1.1")
             {
-                context.Request.EnableBuffering();
-                var remoteIp = context.Connection.RemoteIpAddress!.ToString();
-                var body = await new StreamReader(context.Request.Body).ReadToEndAsync();
-                context.Request.Body.Seek(0, SeekOrigin.Begin);
-                if (_options.Value.EnableManaging && body.Contains("stageTransaction"))
+                try
                 {
-                    try
+                    context.Request.EnableBuffering();
+                    var remoteIp = context.Connection.RemoteIpAddress!.ToString();
+                    var body = await new StreamReader(context.Request.Body).ReadToEndAsync();
+                    context.Request.Body.Seek(0, SeekOrigin.Begin);
+                    if (_options.Value.EnableManaging && body.Contains("stageTransaction"))
                     {
                         var pattern = "64313.*6565";
                         var txPayload = Regex.Match(body, pattern).ToString();
@@ -137,13 +137,13 @@ namespace NineChronicles.Headless.Middleware
                             }
                         }
                     }
-                    catch (Exception ex)
-                    {
-                        _logger.Error(
-                            "[GRAPHQL-MULTI-ACCOUNT-MANAGER] Error message: {message} Stacktrace: {stackTrace}",
-                            ex.Message,
-                            ex.StackTrace);
-                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.Error(
+                        "[GRAPHQL-MULTI-ACCOUNT-MANAGER] Error message: {message} Stacktrace: {stackTrace}",
+                        ex.Message,
+                        ex.StackTrace);
                 }
             }
 
@@ -155,16 +155,18 @@ namespace NineChronicles.Headless.Middleware
             if (!_ipSignerList.ContainsKey(ip))
             {
                 _logger.Information(
-                    "[GRAPHQL-MULTI-ACCOUNT-MANAGER] Creating a new list for IP: {IP}",
-                    ip);
+                    "[GRAPHQL-MULTI-ACCOUNT-MANAGER] Creating a new list for IP: {IP} Address: {agent}",
+                    ip,
+                    agent);
                 _ipSignerList[ip] = new HashSet<Address>();
             }
             else
             {
                 _logger.Information(
-                    "[GRAPHQL-MULTI-ACCOUNT-MANAGER] List already created for IP: {IP} Count: {Count}",
+                    "[GRAPHQL-MULTI-ACCOUNT-MANAGER] List already created for IP: {IP} Count: {Count} Address: {agent}",
                     ip,
-                    _ipSignerList[ip].Count);
+                    _ipSignerList[ip].Count,
+                    agent);
             }
 
             _ipSignerList[ip].Add(agent);

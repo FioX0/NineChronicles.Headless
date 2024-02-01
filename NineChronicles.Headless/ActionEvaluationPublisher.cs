@@ -213,9 +213,21 @@ namespace NineChronicles.Headless
             ConcurrentDictionary<List<string>, List<string>> clientsIpList = new();
             foreach (var group in groups)
             {
-                if (group.IDs.Count >= minimum)
+                try
                 {
-                    clientsIpList.TryAdd(group.IPs.ToList(), group.IDs.ToList());
+                    if (group.IDs.Count >= minimum)
+                    {
+                        clientsIpList.TryAdd(group.IPs.ToList(), group.IDs.ToList());
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Log.Error(
+                        "[AEP-ERROR-CLIENTSBYIP] Ids: {ids}, Ips: {ips}, Message: {message}, StackTrace: {stacktrace}",
+                        group.IDs,
+                        group.IPs,
+                        ex.Message,
+                        ex.StackTrace);
                 }
             }
 
@@ -291,7 +303,7 @@ namespace NineChronicles.Headless
 
         private sealed class IdGroupFinder
         {
-            private Dictionary<string, List<string>> adjacencyList = new();
+            private ConcurrentDictionary<string, List<string>> adjacencyList = new();
             private HashSet<string> visited = new();
             private readonly IMemoryCache _memoryCache;
 
@@ -324,11 +336,23 @@ namespace NineChronicles.Headless
                     {
                         adjacencyList[ip].Add(id);
 
-                        if (!adjacencyList.ContainsKey(id))
+                        try
                         {
-                            adjacencyList[id] = new List<string>();
+                            if (!adjacencyList.ContainsKey(id))
+                            {
+                                adjacencyList[id] = new List<string>();
+                            }
+
+                            adjacencyList[id].Add(ip);
                         }
-                        adjacencyList[id].Add(ip);
+                        catch (Exception ex)
+                        {
+                            Log.Error(
+                                "[AEP-ERROR] Id: {id}, Message: {message}, StackTrace: {stacktrace}",
+                                id,
+                                ex.Message,
+                                ex.StackTrace);
+                        }
                     }
                 }
 
@@ -336,12 +360,23 @@ namespace NineChronicles.Headless
                 var groups = new List<(HashSet<string> IPs, HashSet<string> IDs)>();
                 foreach (var node in adjacencyList.Keys)
                 {
-                    if (!visited.Contains(node))
+                    try
                     {
-                        var ips = new HashSet<string>();
-                        var ids = new HashSet<string>();
-                        DFS(node, ips, ids, dict);
-                        groups.Add((ips, ids));
+                        if (!visited.Contains(node))
+                        {
+                            var ips = new HashSet<string>();
+                            var ids = new HashSet<string>();
+                            DFS(node, ips, ids, dict);
+                            groups.Add((ips, ids));
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Log.Error(
+                            "[AEP-ERROR-DFS] Node: {node}, Message: {message}, StackTrace: {stacktrace}",
+                            node,
+                            ex.Message,
+                            ex.StackTrace);
                     }
                 }
 
