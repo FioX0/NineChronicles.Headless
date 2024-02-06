@@ -269,7 +269,7 @@ namespace NineChronicles.Headless.GraphTypes
                         enemyItemSlotState.Costumes,
                         enemyRuneStates);
                     var arenaSheets = sheets.GetArenaSimulatorSheets();
-                    var log = simulator.Simulate(ExtraMyArenaPlayerDigest, ExtraEnemyArenaPlayerDigest, arenaSheets);
+                    var log = simulator.Simulate(ExtraMyArenaPlayerDigest, ExtraEnemyArenaPlayerDigest, arenaSheets, true);
                     return log.Events;
 
                 }
