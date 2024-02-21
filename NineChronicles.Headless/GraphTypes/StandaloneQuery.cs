@@ -21,10 +21,11 @@ using Nekoyume;
 using Nekoyume.Action;
 using Nekoyume.Extensions;
 using Nekoyume.Model;
+using Nekoyume.Model.Arena;
 using Nekoyume.Model.EnumType;
 using Nekoyume.Model.State;
-using Nekoyume.TableData;
 using Nekoyume.Module;
+using Nekoyume.TableData;
 using NineChronicles.Headless.GraphTypes.States;
 using static NineChronicles.Headless.NCActionUtils;
 using Transaction = Libplanet.Types.Tx.Transaction;
@@ -178,41 +179,34 @@ namespace NineChronicles.Headless.GraphTypes
                     {
                         throw new InvalidOperationException("Previous BlockHash missing.");
                     }
-                    var accountState = chain.GetAccountState(previousHash);
+                    var accountState = chain.GetWorldState(previousHash);
 
-                    var sheets = AccountStateExtensions.GetSheets(accountState,
-                        containArenaSimulatorSheets: true,
-                        sheetTypes: new[]
-                        {
+                    var sheets = accountState.GetSheets(containArenaSimulatorSheets: true, sheetTypes: new[]
+{
                             typeof(ArenaSheet),
                             typeof(ItemRequirementSheet),
                             typeof(EquipmentItemRecipeSheet),
                             typeof(EquipmentItemSubRecipeSheetV2),
                             typeof(EquipmentItemOptionSheet),
-                            typeof(MaterialItemSheet),
-                        });
+                            typeof(MaterialItemSheet), });
+
                     var myAvatarAddress = innerAction.myAvatarAddress;
-                    if (!AccountStateExtensions.TryGetAvatarStateV2(accountState, transaction.Signer, myAvatarAddress,
-                    out var avatarState, out var _))
-                    {
-                        throw new FailedLoadStateException(
-                            $"Aborted as the avatar state of the signer was failed to load.");
-                    }
+
                     var myArenaAvatarStateAdr = ArenaAvatarState.DeriveAddress(myAvatarAddress);
                     var enemyAvatarAddress = innerAction.enemyAvatarAddress;
 
-                    if (!AccountStateExtensions.TryGetArenaAvatarState(accountState, myArenaAvatarStateAdr, out var myArenaAvatarState))
+                    var enemyArenaAvatarStateAdr = ArenaAvatarState.DeriveAddress(enemyAvatarAddress);
+
+                    if (!accountState.TryGetArenaAvatarState(myArenaAvatarStateAdr, out var myArenaAvatarState))
                     {
-                        throw new Exception(
+                        throw new ArenaAvatarStateNotFoundException(
                             $"[{nameof(BattleArena)}] my avatar address : {myAvatarAddress}");
                     }
 
-                    var enemyArenaAvatarStateAdr = ArenaAvatarState.DeriveAddress(enemyAvatarAddress);
-                    if (!AccountStateExtensions.TryGetArenaAvatarState(accountState, enemyArenaAvatarStateAdr,
-                            out var enemyArenaAvatarState))
+                    if (!accountState.TryGetArenaAvatarState(enemyArenaAvatarStateAdr, out var enemyArenaAvatarState))
                     {
-                        throw new Exception(
-                            $"[{nameof(BattleArena)}] enemy avatar address : {enemyAvatarAddress}");
+                        throw new ArenaAvatarStateNotFoundException(
+                            $"[{nameof(BattleArena)}] my avatar address : {enemyAvatarAddress}");
                     }
 
                     // update arena avatar state
@@ -220,20 +214,21 @@ namespace NineChronicles.Headless.GraphTypes
                     myArenaAvatarState.UpdateCostumes(innerAction.costumes);
 
                     var ItemSlotStateAddress = ItemSlotState.DeriveAddress(myAvatarAddress, BattleType.Arena);
-                    var myItemSlotState = AccountStateExtensions.TryGetState(accountState, ItemSlotStateAddress, out List rawItemSlotState)
+                    var myItemSlotState = accountState.TryGetLegacyState(ItemSlotStateAddress, out List rawItemSlotState)
                         ? new ItemSlotState(rawItemSlotState)
                         : new ItemSlotState(BattleType.Arena);
-                    var AvatarState = AccountStateExtensions.GetAvatarState(accountState, myAvatarAddress);
-                    var RuneSlotStateAddress = RuneSlotState.DeriveAddress(myAvatarAddress, BattleType.Arena);
-                    var myRuneSlotState = AccountStateExtensions.TryGetState(accountState, RuneSlotStateAddress, out List RawRuneSlotState)
-                        ? new RuneSlotState(RawRuneSlotState)
+
+                    var AvatarState = accountState.GetAvatarState(myAvatarAddress);
+                    var myRuneSlotStateAddress = RuneSlotState.DeriveAddress(myAvatarAddress, BattleType.Arena);
+                    var myRuneSlotState = accountState.TryGetLegacyState(myRuneSlotStateAddress, out List myRawRuneSlotState)
+                        ? new RuneSlotState(myRawRuneSlotState)
                         : new RuneSlotState(BattleType.Arena);
 
                     var runeStates = new List<RuneState>();
                     var RuneSlotInfos = myRuneSlotState.GetEquippedRuneSlotInfos();
                     foreach (var address in RuneSlotInfos.Select(info => RuneState.DeriveAddress(myAvatarAddress, info.RuneId)))
                     {
-                        if (AccountStateExtensions.TryGetState(accountState, address, out List rawRuneState))
+                        if (accountState.TryGetLegacyState(address, out List rawRuneState))
                         {
                             runeStates.Add(new RuneState(rawRuneState));
                         }
@@ -242,26 +237,27 @@ namespace NineChronicles.Headless.GraphTypes
                     // simulate
                     // get enemy equipped items
                     var enemyItemSlotStateAddress = ItemSlotState.DeriveAddress(enemyAvatarAddress, BattleType.Arena);
-                    var enemyItemSlotState = AccountStateExtensions.TryGetState(accountState, enemyItemSlotStateAddress, out List rawEnemyItemSlotState)
+                    var enemyItemSlotState = accountState.TryGetLegacyState(enemyItemSlotStateAddress, out List rawEnemyItemSlotState)
                         ? new ItemSlotState(rawEnemyItemSlotState)
                         : new ItemSlotState(BattleType.Arena);
-                    var enemyAvatarState = AccountStateExtensions.GetEnemyAvatarState(accountState, enemyAvatarAddress);
+
+                    var enemyAvatarState = accountState.GetEnemyAvatarState(enemyAvatarAddress);
                     var enemyRuneSlotStateAddress = RuneSlotState.DeriveAddress(enemyAvatarAddress, BattleType.Arena);
-                    var enemyRuneSlotState = AccountStateExtensions.TryGetState(accountState, enemyRuneSlotStateAddress, out List enemyRawRuneSlotState)
+                    var enemyRuneSlotState = accountState.TryGetLegacyState(myRuneSlotStateAddress, out List enemyRawRuneSlotState)
                         ? new RuneSlotState(enemyRawRuneSlotState)
                         : new RuneSlotState(BattleType.Arena);
 
                     var enemyRuneStates = new List<RuneState>();
                     var enemyRuneSlotInfos = enemyRuneSlotState.GetEquippedRuneSlotInfos();
-                    foreach (var address in enemyRuneSlotInfos.Select(info => RuneState.DeriveAddress(myAvatarAddress, info.RuneId)))
+                    foreach (var address in enemyRuneSlotInfos.Select(info => RuneState.DeriveAddress(enemyAvatarAddress, info.RuneId)))
                     {
-                        if (AccountStateExtensions.TryGetState(accountState, address, out List rawRuneState))
+                        if (accountState.TryGetLegacyState(address, out List rawRuneState))
                         {
                             enemyRuneStates.Add(new RuneState(rawRuneState));
                         }
                     }
 
-                    ArenaPlayerDigest ExtraMyArenaPlayerDigest = new ArenaPlayerDigest(avatarState,
+                    ArenaPlayerDigest ExtraMyArenaPlayerDigest = new ArenaPlayerDigest(AvatarState,
                         myItemSlotState.Equipments,
                         myItemSlotState.Costumes,
                         runeStates);

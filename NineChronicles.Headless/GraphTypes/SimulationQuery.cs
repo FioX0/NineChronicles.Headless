@@ -5,11 +5,8 @@ using System.Linq;
 using Bencodex.Types;
 using GraphQL;
 using GraphQL.Types;
-using Lib9c.Abstractions;
 using Libplanet.Action;
-using Libplanet.Action.State;
 using Libplanet.Crypto;
-using Libplanet.Types.Assets;
 using Libplanet.Explorer.GraphTypes;
 using Nekoyume;
 using Nekoyume.Action;
@@ -24,15 +21,11 @@ using Nekoyume.Model.Skill;
 using Nekoyume.Model.State;
 using Nekoyume.TableData;
 using Nekoyume.TableData.Crystal;
-using NineChronicles.Headless.GraphTypes.Abstractions;
 using NineChronicles.Headless.GraphTypes.States;
-using NineChronicles.Headless.GraphTypes.States.Models.Item.Enum;
-using NineChronicles.Headless.GraphTypes.States.Models.Table;
 using Nekoyume.TableData.Pet;
-using DecimalMath;
 using Nekoyume.Helper;
 using Nekoyume.Model.Stat;
-using Humanizer;
+using Nekoyume.Module;
 
 namespace NineChronicles.Headless.GraphTypes
 {
@@ -76,11 +69,11 @@ namespace NineChronicles.Headless.GraphTypes
                     var Foods = context.GetArgument<List<Guid>>("foodIds");
                     int? StageBuffId = 1;
                     //sheets
-                    var sheets = AccountStateExtensions.GetSheets(context.Source.AccountState,
-                    containQuestSheet: true,
-                    containSimulatorSheets: true,
-                    sheetTypes: new[]
-                    {
+                    var sheets = context.Source.WorldState.GetSheets(
+                        containQuestSheet: true,
+                        containSimulatorSheets: true,
+                        sheetTypes: new[]
+{
                         typeof(WorldSheet),
                         typeof(StageSheet),
                         typeof(StageWaveSheet),
@@ -99,8 +92,8 @@ namespace NineChronicles.Headless.GraphTypes
                         typeof(CrystalStageBuffGachaSheet),
                         typeof(CrystalRandomBuffSheet),
                         typeof(StakeActionPointCoefficientSheet),
-                        typeof(RuneListSheet),
-                    });
+                        typeof(RuneListSheet), });
+
                     var materialItemSheet = sheets.GetSheet<MaterialItemSheet>();
                     var characterSheet = sheets.GetSheet<CharacterSheet>();
                     if (!sheets.GetSheet<StageSheet>().TryGetValue(StageId, out var stageRow))
@@ -109,31 +102,29 @@ namespace NineChronicles.Headless.GraphTypes
                     }
 
                     //MyAvatar  
-                    var myAvatar = AccountStateExtensions.GetAvatarStateV2(context.Source.AccountState, myAvatarAddress);
+                    var myAvatar = context.Source.WorldState.GetAvatarState(myAvatarAddress);
 
                     if (!characterSheet.TryGetValue(myAvatar.characterId, out var characterRow))
                     {
                         throw new SheetRowNotFoundException("CharacterSheet", myAvatar.characterId);
-                    }              
-                    var myArenaAvatarStateAdr = ArenaAvatarState.DeriveAddress(myAvatarAddress);
-                    var myArenaAvatarState = AccountStateExtensions.GetArenaAvatarState(context.Source.AccountState, myArenaAvatarStateAdr, myAvatar);
+                    }
 
                     var myAvatarEquipments = myAvatar.inventory.Equipments;
                     var myAvatarCostumes = myAvatar.inventory.Costumes;
 
-                    List<Guid> myArenaEquipementList = myAvatarEquipments.Where(f=>f.equipped).Select(n => n.ItemId).ToList();
-                    List<Guid> myArenaCostumeList = myAvatarCostumes.Where(f=>f.equipped).Select(n => n.ItemId).ToList();
+                    List<Guid> myEquipementList = myAvatarEquipments.Where(f=>f.equipped).Select(n => n.ItemId).ToList();
+                    List<Guid> myCostumeList = myAvatarCostumes.Where(f=>f.equipped).Select(n => n.ItemId).ToList();
 
                     var myRuneSlotStateAddress = RuneSlotState.DeriveAddress(myAvatarAddress, BattleType.Adventure);
-                    var myRuneSlotState = AccountStateExtensions.TryGetState(context.Source.AccountState, myRuneSlotStateAddress, out List myRawRuneSlotState)
+                    var myRuneSlotState = context.Source.WorldState.TryGetLegacyState(myRuneSlotStateAddress, out List myRawRuneSlotState)
                         ? new RuneSlotState(myRawRuneSlotState)
-                        : new RuneSlotState(BattleType.Arena);
+                        : new RuneSlotState(BattleType.Adventure);
 
                     var myRuneStates = new List<RuneState>();
                     var myRuneSlotInfos = myRuneSlotState.GetEquippedRuneSlotInfos();
                     foreach (var address in myRuneSlotInfos.Select(info => RuneState.DeriveAddress(myAvatarAddress, info.RuneId)))
                     {
-                        if (AccountStateExtensions.TryGetState(context.Source.AccountState, address, out List rawRuneState))
+                        if (context.Source.WorldState.TryGetLegacyState(address, out List rawRuneState))
                         {
                             myRuneStates.Add(new RuneState(rawRuneState));
                         }
@@ -144,9 +135,10 @@ namespace NineChronicles.Headless.GraphTypes
                     var isNotClearedStage = !myAvatar.worldInformation.IsStageCleared(StageId);
                     var skillsOnWaveStart = new List<Skill>();
                     CrystalRandomSkillState? skillState = null;
-                    skillState = AccountStateExtensions.TryGetState<List>(context.Source.AccountState, skillStateAddress, out var serialized)
+                    skillState = context.Source.WorldState.TryGetLegacyState<List>(skillStateAddress, out var serialized)
                         ? new CrystalRandomSkillState(skillStateAddress, serialized)
                         : new CrystalRandomSkillState(skillStateAddress, StageId);
+
                     if (skillState.SkillIds.Any())
                     {
                         var crystalRandomBuffSheet = sheets.GetSheet<CrystalRandomBuffSheet>();
@@ -251,26 +243,15 @@ namespace NineChronicles.Headless.GraphTypes
                     Address enemyAvatarAddress = context.GetArgument<Address>("enemyAvatarAddress");
                     int simulationCount = context.GetArgument<int>("simulationCount");
 
-                    var sheets = AccountStateExtensions.GetSheets(context.Source.AccountState, sheetTypes: new[]
+                    var sheets = context.Source.WorldState.GetSheets(containArenaSimulatorSheets: true, sheetTypes: new[]
                     {
                         typeof(ArenaSheet),
-                        typeof(CostumeStatSheet),
                         typeof(ItemRequirementSheet),
                         typeof(EquipmentItemRecipeSheet),
                         typeof(EquipmentItemSubRecipeSheetV2),
                         typeof(EquipmentItemOptionSheet),
-                        typeof(RuneListSheet),
                         typeof(MaterialItemSheet),
-                        typeof(SkillSheet),
-                        typeof(SkillBuffSheet),
-                        typeof(StatBuffSheet),
-                        typeof(SkillActionBuffSheet),
-                        typeof(ActionBuffSheet),
-                        typeof(CharacterSheet),
-                        typeof(CharacterLevelSheet),
-                        typeof(EquipmentItemSetEffectSheet),
-                        typeof(WeeklyArenaRewardSheet),
-                        typeof(RuneOptionSheet),
+                        typeof(RuneListSheet),
                     });
 
                     if(simulationCount < 1 || simulationCount > 1000)
@@ -278,8 +259,8 @@ namespace NineChronicles.Headless.GraphTypes
                         throw new Exception("arenaPercentageCalculator - Invalid simulationCount");
                     }
 
-                    var myAvatar = AccountStateExtensions.GetAvatarStateV2(context.Source.AccountState, myAvatarAddress);
-                    var enemyAvatar = AccountStateExtensions.GetAvatarStateV2(context.Source.AccountState, enemyAvatarAddress);
+                    var myAvatar = context.Source.WorldState.GetAvatarState(myAvatarAddress);
+                    var enemyAvatar = context.Source.WorldState.GetAvatarState(enemyAvatarAddress);
 
                     //sheets
                     var arenaSheets = sheets.GetArenaSimulatorSheets();
@@ -290,16 +271,23 @@ namespace NineChronicles.Headless.GraphTypes
                         throw new SheetRowNotFoundException("CharacterSheet", myAvatar.characterId);
                     }
 
+
+                    var gameConfigState = context.Source.WorldState.GetGameConfigState();
+
                     //MyAvatar                
                     var myArenaAvatarStateAdr = ArenaAvatarState.DeriveAddress(myAvatarAddress);
-                    var myArenaAvatarState = AccountStateExtensions.GetArenaAvatarState(context.Source.AccountState, myArenaAvatarStateAdr, myAvatar);
+                    if (!context.Source.WorldState.TryGetArenaAvatarState(myArenaAvatarStateAdr, out var myArenaAvatarState))
+                    {
+                        throw new ArenaAvatarStateNotFoundException(
+                            $"[{nameof(BattleArena)}] my avatar address : {myAvatarAddress}");
+                    }
                     var myAvatarEquipments = myAvatar.inventory.Equipments;
                     var myAvatarCostumes = myAvatar.inventory.Costumes;
                     List<Guid> myArenaEquipementList = myAvatarEquipments.Where(f=>myArenaAvatarState.Equipments.Contains(f.ItemId)).Select(n => n.ItemId).ToList();
                     List<Guid> myArenaCostumeList = myAvatarCostumes.Where(f=>myArenaAvatarState.Costumes.Contains(f.ItemId)).Select(n => n.ItemId).ToList();
 
                     var myRuneSlotStateAddress = RuneSlotState.DeriveAddress(myAvatarAddress, BattleType.Arena);
-                    var myRuneSlotState = AccountStateExtensions.TryGetState(context.Source.AccountState, myRuneSlotStateAddress, out List myRawRuneSlotState)
+                    var myRuneSlotState = context.Source.WorldState.TryGetLegacyState(myRuneSlotStateAddress, out List myRawRuneSlotState)
                         ? new RuneSlotState(myRawRuneSlotState)
                         : new RuneSlotState(BattleType.Arena);
 
@@ -307,7 +295,7 @@ namespace NineChronicles.Headless.GraphTypes
                     var myRuneSlotInfos = myRuneSlotState.GetEquippedRuneSlotInfos();
                     foreach (var address in myRuneSlotInfos.Select(info => RuneState.DeriveAddress(myAvatarAddress, info.RuneId)))
                     {
-                        if (AccountStateExtensions.TryGetState(context.Source.AccountState, address, out List rawRuneState))
+                        if (context.Source.WorldState.TryGetLegacyState(address, out List rawRuneState))
                         {
                             myRuneStates.Add(new RuneState(rawRuneState));
                         }
@@ -315,24 +303,28 @@ namespace NineChronicles.Headless.GraphTypes
 
                     //Enemy
                     var enemyArenaAvatarStateAdr = ArenaAvatarState.DeriveAddress(enemyAvatarAddress);
-                    var enemyArenaAvatarState = AccountStateExtensions.GetArenaAvatarState(context.Source.AccountState, enemyArenaAvatarStateAdr, enemyAvatar);
+                    if (!context.Source.WorldState.TryGetArenaAvatarState(enemyArenaAvatarStateAdr, out var enemyArenaAvatarState))
+                    {
+                        throw new ArenaAvatarStateNotFoundException(
+                            $"[{nameof(BattleArena)}] my avatar address : {myAvatarAddress}");
+                    }
                     var enemyAvatarEquipments = enemyAvatar.inventory.Equipments;
                     var enemyAvatarCostumes = enemyAvatar.inventory.Costumes;
                     List<Guid> enemyArenaEquipementList = enemyAvatarEquipments.Where(f=>enemyArenaAvatarState.Equipments.Contains(f.ItemId)).Select(n => n.ItemId).ToList();
                     List<Guid> enemyArenaCostumeList = enemyAvatarCostumes.Where(f=>enemyArenaAvatarState.Costumes.Contains(f.ItemId)).Select(n => n.ItemId).ToList();
 
                     var enemyRuneSlotStateAddress = RuneSlotState.DeriveAddress(enemyAvatarAddress, BattleType.Arena);
-                    var enemyRuneSlotState = AccountStateExtensions.TryGetState(context.Source.AccountState, enemyRuneSlotStateAddress, out List enemyRawRuneSlotState)
+                    var enemyRuneSlotState = context.Source.WorldState.TryGetLegacyState(myRuneSlotStateAddress, out List enemyRawRuneSlotState)
                         ? new RuneSlotState(enemyRawRuneSlotState)
                         : new RuneSlotState(BattleType.Arena);
 
                     var enemyRuneStates = new List<RuneState>();
                     var enemyRuneSlotInfos = enemyRuneSlotState.GetEquippedRuneSlotInfos();
-                    foreach (var address in enemyRuneSlotInfos.Select(info => RuneState.DeriveAddress(enemyAvatarAddress, info.RuneId)))
+                    foreach (var address in myRuneSlotInfos.Select(info => RuneState.DeriveAddress(enemyAvatarAddress, info.RuneId)))
                     {
-                        if (AccountStateExtensions.TryGetState(context.Source.AccountState, address, out List rawRuneState))
+                        if (context.Source.WorldState.TryGetLegacyState(address, out List rawRuneState))
                         {
-                            enemyRuneStates.Add(new RuneState(rawRuneState));
+                            myRuneStates.Add(new RuneState(rawRuneState));
                         }
                     }
 
@@ -424,9 +416,8 @@ namespace NineChronicles.Headless.GraphTypes
 
                    var states = context.Source;
 
-
-                   Dictionary<Type, (Address, ISheet)> sheets = AccountStateExtensions.GetSheets(context.Source.AccountState, sheetTypes: new[]
-                    {
+                   var sheets = context.Source.WorldState.GetSheets(sheetTypes: new[]
+                   {
                         typeof(EquipmentItemRecipeSheet),
                         typeof(EquipmentItemSheet),
                         typeof(MaterialItemSheet),
@@ -436,14 +427,20 @@ namespace NineChronicles.Headless.GraphTypes
                         typeof(CrystalMaterialCostSheet),
                         typeof(CrystalFluctuationSheet),
                         typeof(CrystalHammerPointSheet),
-                        typeof(ConsumableItemRecipeSheet),
-                    });
+                        typeof(PetOptionSheet),
+                        typeof(ConsumableItemRecipeSheet),                    
+                   });
 
-                   if (!AccountStateExtensions.TryGetAgentAvatarStatesV2(context.Source.AccountState, agentAdress, avatarAddress, out var agentState,
-                        out var avatarState, out _))
+                   var agentState = context.Source.WorldState.GetAgentState(agentAdress);
+
+#pragma warning disable CS8602 // Dereference of a possibly null reference.
+                   if (!agentState.address.Equals(agentAdress))
                    {
                        throw new Exception("arenaPercentageCalculator - Invalid simulationCount");
                    }
+#pragma warning restore CS8602 // Dereference of a possibly null reference.
+
+                   var avatarState = context.Source.WorldState.GetAvatarState(avatarAddress);
 
                    // Validate RecipeId
                    var equipmentItemRecipeSheet = sheets.GetSheet<EquipmentItemRecipeSheet>();
@@ -483,7 +480,7 @@ namespace NineChronicles.Headless.GraphTypes
                    if (equipmentItemRecipeSheet[recipeId].CRYSTAL != 0)
                    {
                        var unlockedRecipeIdsAddress = avatarAddress.Derive("recipe_ids");
-                       if (!AccountStateExtensions.TryGetState(context.Source.AccountState, unlockedRecipeIdsAddress, out List rawIds))
+                       if (!context.Source.WorldState.TryGetLegacyState(unlockedRecipeIdsAddress, out List rawIds))
                        {
                            throw new FailedLoadStateException("can't find UnlockedRecipeList.");
                        }
@@ -545,7 +542,7 @@ namespace NineChronicles.Headless.GraphTypes
                    CrystalHammerPointSheet.Row? hammerPointRow = null;
                    if (existHammerPointSheet)
                    {
-                       if (AccountStateExtensions.TryGetState(context.Source.AccountState, hammerPointAddress, out List serialized))
+                       if (context.Source.WorldState.TryGetLegacyState(hammerPointAddress, out List serialized))
                        {
                            hammerPointState =
                                new HammerPointState(hammerPointAddress, serialized);
@@ -560,7 +557,7 @@ namespace NineChronicles.Headless.GraphTypes
                    long endBlockIndex = 99999999999;
                    //var isMimisbrunnrSubRecipe = subRecipeRow?.IsMimisbrunnrSubRecipe ??
                    //    subRecipeId.HasValue && recipeRow.SubRecipeIds[2] == subRecipeId.Value;
-                   var petOptionSheet = AccountStateExtensions.GetSheet<PetOptionSheet>(context.Source.AccountState);
+                   var petOptionSheet = sheets.GetSheet<PetOptionSheet>();
                    //bool useHammerPoint = false;
                    //if (useHammerPoint)
                    //{

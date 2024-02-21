@@ -14,12 +14,10 @@ using Nekoyume;
 using Nekoyume.Action;
 using Nekoyume.Arena;
 using Nekoyume.Extensions;
-using Nekoyume.Model;
 using Nekoyume.Model.Arena;
 using Nekoyume.Model.EnumType;
 using Nekoyume.Model.Item;
 using Nekoyume.Model.Stake;
-using Nekoyume.Model.Skill;
 using Nekoyume.Model.State;
 using Nekoyume.Module;
 using Nekoyume.TableData;
@@ -27,7 +25,6 @@ using Nekoyume.TableData.Crystal;
 using Nekoyume.TableData.Stake;
 using NineChronicles.Headless.GraphTypes.Abstractions;
 using NineChronicles.Headless.GraphTypes.States;
-using NineChronicles.Headless.GraphTypes.States.Models.Item;
 using NineChronicles.Headless.GraphTypes.States.Models;
 using NineChronicles.Headless.GraphTypes.States.Models.Item.Enum;
 using NineChronicles.Headless.GraphTypes.States.Models.Table;
@@ -50,7 +47,7 @@ namespace NineChronicles.Headless.GraphTypes
                     return new AvatarStateType.AvatarStateContext(
                         context.WorldState.GetAvatarState(address),
                         context.WorldState,
-                        context.BlockIndex, context.StateMemoryCache);
+                        context.BlockIndex!.Value, context.StateMemoryCache);
                 }
                 catch (InvalidAddressException)
                 {
@@ -241,7 +238,7 @@ namespace NineChronicles.Headless.GraphTypes
                         return new AgentStateType.AgentStateContext(
                             agentState,
                             context.Source.WorldState,
-                            context.Source.BlockIndex,
+                            context.Source.BlockIndex!.Value,
                             context.Source.StateMemoryCache
                         );
                     }
@@ -259,7 +256,7 @@ namespace NineChronicles.Headless.GraphTypes
                         stakeStateV2,
                         stakeStateAddress,
                         ctx.WorldState,
-                        ctx.BlockIndex,
+                        ctx.BlockIndex!.Value,
                         ctx.StateMemoryCache
                     );
                 }
@@ -577,7 +574,7 @@ namespace NineChronicles.Headless.GraphTypes
                         throw new Exception("Invalid Slot Index");
                     }
                     var deriveAddress = CombinationSlotState.DeriveAddress(agentAddress, index);
-                    if (context.Source.GetState(deriveAddress) is Dictionary state)
+                    if (context.Source.WorldState.GetLegacyState(deriveAddress) is Dictionary state)
                     {
                         return new CombinationSlotState(state);
                     }
@@ -585,281 +582,167 @@ namespace NineChronicles.Headless.GraphTypes
                     return null;
                 }
             );
-            Field<ChampionshipArenaStateType>(
-                name: "championshipArena",
-                description: "State for championShip arena.",
-                arguments: new QueryArguments(
-                    new QueryArgument<NonNullGraphType<IntGraphType>>
-                    {
-                        Name = "championshipid",
-                        Description = "Championship Id, increases each season"
-                    },
-                    new QueryArgument<NonNullGraphType<IntGraphType>>
-                    {
-                        Name = "round",
-                        Description = "The round number"
-                    }),
-                resolve: context =>
-                {
-                    try {
-                        var championshipId = context.GetArgument<int>("championshipid");
-                        var round = context.GetArgument<int>("round");
-                        var sheets = AccountStateExtensions.GetSheets(context.Source.AccountState, sheetTypes: new[]
-                        {
-                            typeof(ArenaSheet),
-                            typeof(CharacterSheet),
-                            typeof(CostumeStatSheet),
-                            typeof(RuneListSheet),
-                            typeof(RuneOptionSheet)
-                        });
-                        var arenaSheet = sheets.FirstOrDefault().Value.sheet as ArenaSheet;
-                        if (arenaSheet == null || !arenaSheet.TryGetValue(championshipId, out var arenaRow))
-                        {
-                            throw new SheetRowNotFoundException(nameof(ArenaSheet),
-                                $"championship Id : {championshipId}");
-                        }
-                        if (!arenaRow.TryGetRound(round, out var roundData))
-                        {
-                            throw new RoundNotFoundException(
-                                $"[{nameof(BattleArena)}] ChampionshipId({arenaRow.ChampionshipId}) - round({round})");
-                        }
-
-                        var arenaParticipantsAdr =
-                            ArenaParticipants.DeriveAddress(roundData.ChampionshipId, roundData.Round);
-                        if (!AccountStateExtensions.TryGetArenaParticipants(context.Source.AccountState, arenaParticipantsAdr, out var arenaParticipants))
-                        {
-                            throw new ArenaParticipantsNotFoundException(
-                                $"[{nameof(BattleArena)}] ChampionshipId({roundData.ChampionshipId}) - round({roundData.Round})");
-                        }
-                        var championshipInfo = new ChampionshipArenaState();
-                        championshipInfo.StartIndex = roundData.StartBlockIndex;
-                        championshipInfo.EndIndex = roundData.EndBlockIndex;
-                        championshipInfo.Address = arenaParticipantsAdr;
-                        List<ChampionArenaInfo> arenaInformations = new List<ChampionArenaInfo>();
-                        var gameConfigState = AccountStateExtensions.GetGameConfigState(context.Source.AccountState);
-                        var interval = gameConfigState.DailyArenaInterval;
-                        var currentTicketResetCount = ArenaHelper.GetCurrentTicketResetCount(
-                                        context.Source.BlockIndex!.Value, roundData.StartBlockIndex, interval);
-                        foreach (var participant in arenaParticipants.AvatarAddresses)
-                        {
-                            
-                            var arenaInformationAdr =
-                                ArenaInformation.DeriveAddress(participant, roundData.ChampionshipId, roundData.Round);
-                            if (!AccountStateExtensions.TryGetArenaInformation(context.Source.AccountState, arenaInformationAdr, out var arenaInformation))
-                            {
-                                continue;
-                            }
-                            var arenaScoreAdr =
-                                    ArenaScore.DeriveAddress(participant, roundData.ChampionshipId, roundData.Round);
-                            if (!AccountStateExtensions.TryGetArenaScore(context.Source.AccountState, arenaScoreAdr, out var arenaScore))
-                            {
-                                continue;
-                            }
-                            var ticket = arenaInformation.Ticket;
-                            if (ticket == 0 && arenaInformation.TicketResetCount < currentTicketResetCount)
-                            {
-                                ticket = 8;
-                            }
-                            var avatar = AccountStateExtensions.GetAvatarStateV2(context.Source.AccountState, participant);
-                            var arenaAvatarStateAdr = ArenaAvatarState.DeriveAddress(participant);
-                            var arenaAvatarState = AccountStateExtensions.GetArenaAvatarState(context.Source.AccountState, arenaAvatarStateAdr, avatar);
-
-                            var characterSheet = sheets.GetSheet<CharacterSheet>();
-                            if (!characterSheet.TryGetValue(avatar.characterId, out var characterRow))
-                            {
-                                throw new SheetRowNotFoundException("CharacterSheet", avatar.characterId);
-                            }
-                            var costumeStatSheet = sheets.GetSheet<CostumeStatSheet>();
-
-
-
-                            var runeSlotStateAddress = RuneSlotState.DeriveAddress(participant, BattleType.Arena);
-                            var runeSlotState = AccountStateExtensions.TryGetState(context.Source.AccountState, runeSlotStateAddress, out List rawRuneSlotState)
-                                ? new RuneSlotState(rawRuneSlotState)
-                                : new RuneSlotState(BattleType.Raid);
-                            var runeListSheet = sheets.GetSheet<RuneListSheet>();
-                            var runeStates = new List<RuneState>();
-                            var runeSlotInfoList = runeSlotState.GetRuneSlot();
-
-                            foreach (var address in runeSlotInfoList.Where(info=> info.RuneId.HasValue).Select(info => RuneState.DeriveAddress(participant, info.RuneId!.Value)))
-                            {
-                                if (AccountStateExtensions.TryGetState(context.Source.AccountState, address, out List rawRuneState))
-                                {
-                                    runeStates.Add(new RuneState(rawRuneState));
-                               }
-                            }
-
-                            var runeOptionSheet = sheets.GetSheet<RuneOptionSheet>();
-                            var runeOptions = new List<RuneOptionSheet.Row.RuneOptionInfo>();
-                            foreach (var runeState in runeStates)
-                            {
-                                if (!runeOptionSheet.TryGetValue(runeState.RuneId, out var optionRow))
-                                {
-                                    throw new SheetRowNotFoundException("RuneOptionSheet", runeState.RuneId);
-                                }
-
-                                if (!optionRow.LevelOptionMap.TryGetValue(runeState.Level, out var option))
-                                {
-                                    throw new SheetRowNotFoundException("RuneOptionSheet", runeState.Level);
-                                }
-
-                                runeOptions.Add(option);
-                            }
-
-                            var avatarEquipments = avatar.inventory.Equipments;
-
-                            var avatarCostumes = avatar.inventory.Costumes;
-
-                            List<Equipment> arenaEquipementList = avatarEquipments.Where(f=>arenaAvatarState.Equipments.Contains(f.ItemId)).Select(n => n).ToList();
-                            List<Costume> arenaCostumeList = avatarCostumes.Where(f=>arenaAvatarState.Costumes.Contains(f.ItemId)).Select(n => n).ToList();
-
-                            var cp = Nekoyume.Battle.CPHelper.TotalCP(
-                                arenaEquipementList, arenaCostumeList,
-                                runeOptions, avatar.level,
-                                characterRow, costumeStatSheet
-                            );
-
-                            var arenaInfo = new ChampionArenaInfo
-                            {
-                                AvatarAddress = participant,
-                                AgentAddress = avatar.agentAddress,
-                                AvatarName = avatar.name,
-                                Win = arenaInformation.Win,
-                                Ticket = ticket,
-                                Lose = arenaInformation.Lose,
-                                Score = arenaScore.Score,
-                                PurchasedTicketCount = arenaInformation.PurchasedTicketCount,
-                                TicketResetCount = arenaInformation.TicketResetCount,
-                                Active = true,
-                                CP = cp,
-                                Equipment = arenaAvatarState.Equipments,
-                                Costumes = arenaAvatarState.Costumes
-                            };
-                            arenaInformations.Add(arenaInfo);
-                        }
-
-                        var ranks = StateContext.AddRank(arenaInformations.ToArray());
-                        foreach (var rank in ranks)
-                        {
-                            var info = arenaInformations.First(a => a.AvatarAddress == rank.AvatarAddress);
-                            if (info != null)
-                            {
-                                info.Rank = rank.Rank;
-                            }
-                        }
-                        var orderInfos = arenaInformations.OrderBy(a => a.Rank).ToList();
-                        championshipInfo.OrderedArenaInfos = orderInfos;
-                        return championshipInfo;
-                    }
-                    catch(Exception ex){
-                        Console.WriteLine("Arena Exception = " + ex.Message);
-                        return null;
-                    }                   
-            });
-
-            Field<ChampionshipArenaStateType>(
-                name: "championshipArenaWITHCACHE",
-                description: "State for championShip arena.",
-                resolve: context =>
-                {
-                    try {
-                        var blockIndex = context.Source.BlockIndex!.Value;
-                        var currentRoundData = context.Source.AccountState.GetSheet<ArenaSheet>().GetRoundByBlockIndex(blockIndex);
-                        List<ArenaParticipant> arenaParticipants = new();
-                        var sheets = AccountStateExtensions.GetSheets(context.Source.AccountState, sheetTypes: new[]
-                        {
-                            typeof(ArenaSheet),
-                            typeof(CharacterSheet),
-                            typeof(CostumeStatSheet),
-                            typeof(RuneListSheet),
-                            typeof(RuneOptionSheet)
-                        });
-                        var arenaSheet = sheets.FirstOrDefault().Value.sheet as ArenaSheet;
-                        var cacheKey = $"{currentRoundData.ChampionshipId}_{currentRoundData.Round}";
-
-
-                        if (arenaSheet == null || !arenaSheet.TryGetValue(currentRoundData.ChampionshipId, out var arenaRow))
-                        {
-                            throw new SheetRowNotFoundException(nameof(ArenaSheet),
-                                $"championship Id : {currentRoundData.ChampionshipId}");
-                        }
-                        if (!arenaRow.TryGetRound(currentRoundData.Round, out var roundData))
-                        {
-                            throw new RoundNotFoundException(
-                                $"[{nameof(BattleArena)}] ChampionshipId({arenaRow.ChampionshipId}) - round({currentRoundData.Round})");
-                        }
-
-                        if (context.Source.StateMemoryCache.ArenaParticipantsCache.TryGetValue(cacheKey,
-                            out var cachedResult))
-                        {
-                            arenaParticipants = (cachedResult as List<ArenaParticipant>)!;
-                        }
-
-                        var arenaParticipantsAdr =
-                            ArenaParticipants.DeriveAddress(roundData.ChampionshipId, roundData.Round);
-
-                        var championshipInfo = new ChampionshipArenaState();
-                        championshipInfo.StartIndex = roundData.StartBlockIndex;
-                        championshipInfo.EndIndex = roundData.EndBlockIndex;
-                        championshipInfo.Address = arenaParticipantsAdr;
-                        List<ChampionArenaInfo> arenaInformations = new List<ChampionArenaInfo>();
-                        var gameConfigState = AccountStateExtensions.GetGameConfigState(context.Source.AccountState);
-                        var interval = gameConfigState.DailyArenaInterval;
-                        var currentTicketResetCount = ArenaHelper.GetCurrentTicketResetCount(
-                                        context.Source.BlockIndex!.Value, roundData.StartBlockIndex, interval);
-                        foreach (var participant in arenaParticipants)
-                        {
-                           
-                            var arenaInformationAdr =
-                                ArenaInformation.DeriveAddress(participant.AvatarAddr, roundData.ChampionshipId, roundData.Round);
-                            if (!AccountStateExtensions.TryGetArenaInformation(context.Source.AccountState, arenaInformationAdr, out var arenaInformation))
-                            {
-                                continue;
-                            }
-                            var ticket = arenaInformation.Ticket;
-                            if (ticket == 0 && arenaInformation.TicketResetCount < currentTicketResetCount)
-                            {
-                                ticket = 8;
-                            }
-                            var avatar = AccountStateExtensions.GetAvatarStateV2(context.Source.AccountState, participant.AvatarAddr);
-                          
-
-                            var arenaInfo = new ChampionArenaInfo
-                            {
-                                AvatarAddress = participant.AvatarAddr,
-                                AgentAddress = avatar.agentAddress,
-                                AvatarName = avatar.name,
-                                Win = arenaInformation.Win,
-                                Ticket = ticket,
-                                Lose = arenaInformation.Lose,
-                                Score = participant.Score,
-                                PurchasedTicketCount = arenaInformation.PurchasedTicketCount,
-                                TicketResetCount = arenaInformation.TicketResetCount,
-                                Active = true,
-                                CP = participant.Cp
-                            };
-                            arenaInformations.Add(arenaInfo);
-                        }
-
-                        var ranks = StateContext.AddRank(arenaInformations.ToArray());
-                        foreach (var rank in ranks)
-                        {
-                            var info = arenaInformations.First(a => a.AvatarAddress == rank.AvatarAddress);
-                            if (info != null)
-                            {
-                                info.Rank = rank.Rank;
-                            }
-                        }
-                        var orderInfos = arenaInformations.OrderBy(a => a.Rank).ToList();
-                        championshipInfo.OrderedArenaInfos = orderInfos;
-                        return championshipInfo;
-                    }
-                    catch(Exception ex){
-                        Console.WriteLine("Arena Exception = " + ex.Message);
-                        return null;
-                    }                   
-            });
-
+            //Field<ChampionshipArenaStateType>(
+            //    name: "championshipArena",
+            //    description: "State for championShip arena.",
+            //    arguments: new QueryArguments(
+            //        new QueryArgument<NonNullGraphType<IntGraphType>>
+            //        {
+            //            Name = "championshipid",
+            //            Description = "Championship Id, increases each season"
+            //        },
+            //        new QueryArgument<NonNullGraphType<IntGraphType>>
+            //        {
+            //            Name = "round",
+            //            Description = "The round number"
+            //        }),
+            //    resolve: context =>
+            //    {
+            //        try {
+            //            var championshipId = context.GetArgument<int>("championshipid");
+            //            var round = context.GetArgument<int>("round");
+            //            var sheet = new WorldBossListSheet();
+            //            var address = Addresses.GetSheetAddress<WorldBossListSheet>();
+            //            if (context.Source.WorldState.GetLegacyState(address) is Text text)
+            //            {
+            //                sheet.Set(text);
+            //            }
+            //            var sheets = AccountStateExtensions.GetSheets(context.Source.AccountState, sheetTypes: new[]
+            //            {
+            //                typeof(ArenaSheet),
+            //                typeof(CharacterSheet),
+            //                typeof(CostumeStatSheet),
+            //                typeof(RuneListSheet),
+            //                typeof(RuneOptionSheet)
+            //            });
+            //            var arenaSheet = sheets.FirstOrDefault().Value.sheet as ArenaSheet;
+            //            if (arenaSheet == null || !arenaSheet.TryGetValue(championshipId, out var arenaRow))
+            //            {
+            //                throw new SheetRowNotFoundException(nameof(ArenaSheet),
+            //                    $"championship Id : {championshipId}");
+            //            }
+            //            if (!arenaRow.TryGetRound(round, out var roundData))
+            //            {
+            //                throw new RoundNotFoundException(
+            //                    $"[{nameof(BattleArena)}] ChampionshipId({arenaRow.ChampionshipId}) - round({round})");
+            //            }
+            //            var arenaParticipantsAdr =
+            //                ArenaParticipants.DeriveAddress(roundData.ChampionshipId, roundData.Round);
+            //            if (!AccountStateExtensions.TryGetArenaParticipants(context.Source.AccountState, arenaParticipantsAdr, out var arenaParticipants))
+            //            {
+            //                throw new ArenaParticipantsNotFoundException(
+            //                    $"[{nameof(BattleArena)}] ChampionshipId({roundData.ChampionshipId}) - round({roundData.Round})");
+            //            }
+            //            var championshipInfo = new ChampionshipArenaState();
+            //            championshipInfo.StartIndex = roundData.StartBlockIndex;
+            //            championshipInfo.EndIndex = roundData.EndBlockIndex;
+            //            championshipInfo.Address = arenaParticipantsAdr;
+            //            List<ChampionArenaInfo> arenaInformations = new List<ChampionArenaInfo>();
+            //            var gameConfigState = AccountStateExtensions.GetGameConfigState(context.Source.AccountState);
+            //            var interval = gameConfigState.DailyArenaInterval;
+            //            var currentTicketResetCount = ArenaHelper.GetCurrentTicketResetCount(
+            //                            context.Source.BlockIndex!.Value, roundData.StartBlockIndex, interval);
+            //            foreach (var participant in arenaParticipants.AvatarAddresses)
+            //            {                   
+            //                var arenaInformationAdr =
+            //                    ArenaInformation.DeriveAddress(participant, roundData.ChampionshipId, roundData.Round);
+            //                if (!AccountStateExtensions.TryGetArenaInformation(context.Source.AccountState, arenaInformationAdr, out var arenaInformation))
+            //                {
+            //                    continue;
+            //                }
+            //                var arenaScoreAdr =
+            //                        ArenaScore.DeriveAddress(participant, roundData.ChampionshipId, roundData.Round);
+            //                if (!AccountStateExtensions.TryGetArenaScore(context.Source.AccountState, arenaScoreAdr, out var arenaScore))
+            //                {
+            //                    continue;
+            //                }
+            //                var ticket = arenaInformation.Ticket;
+            //                if (ticket == 0 && arenaInformation.TicketResetCount < currentTicketResetCount)
+            //                {
+            //                    ticket = 8;
+            //                }
+            //                var avatar = AccountStateExtensions.GetAvatarStateV2(context.Source.AccountState, participant);
+            //                var arenaAvatarStateAdr = ArenaAvatarState.DeriveAddress(participant);
+            //                var arenaAvatarState = AccountStateExtensions.GetArenaAvatarState(context.Source.AccountState, arenaAvatarStateAdr, avatar);
+            //                var characterSheet = sheets.GetSheet<CharacterSheet>();
+            //                if (!characterSheet.TryGetValue(avatar.characterId, out var characterRow))
+            //                {
+            //                    throw new SheetRowNotFoundException("CharacterSheet", avatar.characterId);
+            //                }
+            //                var costumeStatSheet = sheets.GetSheet<CostumeStatSheet>();
+            //                var runeSlotStateAddress = RuneSlotState.DeriveAddress(participant, BattleType.Arena);
+            //                var runeSlotState = AccountStateExtensions.TryGetState(context.Source.AccountState, runeSlotStateAddress, out List rawRuneSlotState)
+            //                    ? new RuneSlotState(rawRuneSlotState)
+            //                    : new RuneSlotState(BattleType.Raid);
+            //                var runeListSheet = sheets.GetSheet<RuneListSheet>();
+            //                var runeStates = new List<RuneState>();
+            //                var runeSlotInfoList = runeSlotState.GetRuneSlot();
+            //                foreach (var address in runeSlotInfoList.Where(info=> info.RuneId.HasValue).Select(info => RuneState.DeriveAddress(participant, info.RuneId!.Value)))
+            //                {
+            //                    if (AccountStateExtensions.TryGetState(context.Source.AccountState, address, out List rawRuneState))
+            //                    {
+            //                        runeStates.Add(new RuneState(rawRuneState));
+            //                   }
+            //                }
+            //                var runeOptionSheet = sheets.GetSheet<RuneOptionSheet>();
+            //                var runeOptions = new List<RuneOptionSheet.Row.RuneOptionInfo>();
+            //                foreach (var runeState in runeStates)
+            //                {
+            //                    if (!runeOptionSheet.TryGetValue(runeState.RuneId, out var optionRow))
+            //                    {
+            //                        throw new SheetRowNotFoundException("RuneOptionSheet", runeState.RuneId);
+            //                    }
+            //                    if (!optionRow.LevelOptionMap.TryGetValue(runeState.Level, out var option))
+            //                    {
+            //                        throw new SheetRowNotFoundException("RuneOptionSheet", runeState.Level);
+            //                    }
+            //                    runeOptions.Add(option);
+            //                }
+            //                var avatarEquipments = avatar.inventory.Equipments;
+            //                var avatarCostumes = avatar.inventory.Costumes;
+            //                List<Equipment> arenaEquipementList = avatarEquipments.Where(f=>arenaAvatarState.Equipments.Contains(f.ItemId)).Select(n => n).ToList();
+            //                List<Costume> arenaCostumeList = avatarCostumes.Where(f=>arenaAvatarState.Costumes.Contains(f.ItemId)).Select(n => n).ToList();
+            //                var cp = Nekoyume.Battle.CPHelper.TotalCP(
+            //                    arenaEquipementList, arenaCostumeList,
+            //                    runeOptions, avatar.level,
+            //                    characterRow, costumeStatSheet
+            //                );
+            //                var arenaInfo = new ChampionArenaInfo
+            //                {
+            //                    AvatarAddress = participant,
+            //                    AgentAddress = avatar.agentAddress,
+            //                    AvatarName = avatar.name,
+            //                    Win = arenaInformation.Win,
+            //                    Ticket = ticket,
+            //                    Lose = arenaInformation.Lose,
+            //                    Score = arenaScore.Score,
+            //                    PurchasedTicketCount = arenaInformation.PurchasedTicketCount,
+            //                    TicketResetCount = arenaInformation.TicketResetCount,
+            //                    Active = true,
+            //                    CP = cp,
+            //                    Equipment = arenaAvatarState.Equipments,
+            //                    Costumes = arenaAvatarState.Costumes
+            //                };
+            //                arenaInformations.Add(arenaInfo);
+            //            }
+            //            var ranks = StateContext.AddRank(arenaInformations.ToArray());
+            //            foreach (var rank in ranks)
+            //            {
+            //                var info = arenaInformations.First(a => a.AvatarAddress == rank.AvatarAddress);
+            //                if (info != null)
+            //                {
+            //                    info.Rank = rank.Rank;
+            //                }
+            //            }
+            //            var orderInfos = arenaInformations.OrderBy(a => a.Rank).ToList();
+            //            championshipInfo.OrderedArenaInfos = orderInfos;
+            //            return championshipInfo;
+            //        }
+            //        catch(Exception ex){
+            //            Console.WriteLine("Arena Exception = " + ex.Message);
+            //            return null;
+            //        }                   
+            //});
             Field<CombinationCrystalStateType>(
                 "CraftCrystalCheck",
                 description: "Allows you to pull data",
@@ -882,18 +765,20 @@ namespace NineChronicles.Headless.GraphTypes
 
                     CombinationCrystalState combinationCrystalState = new CombinationCrystalState();
 
-                    Dictionary<Type, (Address, ISheet)> sheets = AccountStateExtensions.GetSheets(context.Source.AccountState, sheetTypes: new[]
+                    var hammerPointSheet = new CrystalHammerPointSheet();
+                    var address = Addresses.GetSheetAddress<CrystalHammerPointSheet>();
+                    if (context.Source.WorldState.GetLegacyState(address) is Text text)
                     {
-                        typeof(CrystalHammerPointSheet),
-                    });
+                        hammerPointSheet.Set(text);
+                    }
 
-                    var existHammerPointSheet = sheets.TryGetSheet(out CrystalHammerPointSheet hammerPointSheet);
+                    var existHammerPointSheet = hammerPointSheet.Any();
                     var hammerPointAddress = Addresses.GetHammerPointStateAddress(avatarAddress, recipeId);
                     var hammerPointState = new HammerPointState(hammerPointAddress, recipeId);
                     CrystalHammerPointSheet.Row? hammerPointRow = null;
                     if (existHammerPointSheet)
                     {
-                        if (AccountStateExtensions.TryGetState(context.Source.AccountState, hammerPointAddress, out List serialized))
+                        if (context.Source.WorldState.TryGetLegacyState(hammerPointAddress, out List serialized))
                         {
                             hammerPointState =
                                 new HammerPointState(hammerPointAddress, serialized);
@@ -932,7 +817,7 @@ namespace NineChronicles.Headless.GraphTypes
                         for(int slotIndex = 0; slotIndex < 4; slotIndex++)
                         {
                             var deriveAddress = CombinationSlotState.DeriveAddress(avatarAddress, slotIndex);
-                            if (context.Source.GetState(deriveAddress) is Dictionary state)
+                            if (context.Source.WorldState.GetLegacyState(deriveAddress) is Dictionary state)
                             {
                                 CombinationSlotStateExtended combinationSlotData = new CombinationSlotStateExtended();
 
@@ -977,14 +862,15 @@ namespace NineChronicles.Headless.GraphTypes
                         var gachaStateAddress = Addresses.GetSkillStateAddressFromAvatarAddress(avatarAddress);
 
                         // Invalid Avatar address, or does not have GachaState.
-                        if (!AccountStateExtensions.TryGetState(context.Source.AccountState, gachaStateAddress, out List rawGachaState))
+                        if (!context.Source.WorldState.TryGetLegacyState(gachaStateAddress, out List rawGachaState))
                         {
                             throw new FailedLoadStateException(
                                 $"Can't find {nameof(CrystalRandomSkillState)}. Gacha state address:{gachaStateAddress}");
                         }
 
                         var gachaState = new CrystalRandomSkillState(gachaStateAddress, rawGachaState);
-                        var stageBuffSheet = AccountStateExtensions.GetSheet<CrystalStageBuffGachaSheet>(context.Source.AccountState);
+                        //var stageBuffSheet = AccountStateExtensions.GetSheet<CrystalStageBuffGachaSheet>(context.Source.WorldState);
+                        var stageBuffSheet = context.Source.WorldState.GetSheet<CrystalStageBuffGachaSheet>();
 
                         GatchaState gatchaStateResult = new GatchaState();
 
@@ -1079,18 +965,23 @@ namespace NineChronicles.Headless.GraphTypes
                     List<Guid> equipmentIds = context.GetArgument<List<Guid>>("equipmentIds") ?? new List<Guid>();
                     
                     var blockIndex = context.Source.BlockIndex!.Value;
-                    var currentRoundData = context.Source.AccountState.GetSheet<ArenaSheet>().GetRoundByBlockIndex(blockIndex);
 
-                    var myAvatar = AccountStateExtensions.GetAvatarStateV2(context.Source.AccountState, myAvatarAddress);
+                    var currentRoundData = context.Source.WorldState.GetSheet<ArenaSheet>().GetRoundByBlockIndex(blockIndex);
+
+                    var myAvatar = context.Source.WorldState.GetAvatarState(myAvatarAddress);
                     var myArenaAvatarStateAdr = ArenaAvatarState.DeriveAddress(myAvatarAddress);
-                    var myArenaAvatarState = AccountStateExtensions.GetArenaAvatarState(context.Source.AccountState, myArenaAvatarStateAdr, myAvatar);
+                    if (!context.Source.WorldState.TryGetArenaAvatarState(myArenaAvatarStateAdr, out var myArenaAvatarState))
+                    {
+                        throw new ArenaAvatarStateNotFoundException(
+                            $"[{nameof(BattleArena)}] my avatar address : {myAvatarAddress}");
+                    }
                     var myAvatarEquipments = myAvatar.inventory.Equipments;
                     var myAvatarCostumes = myAvatar.inventory.Costumes;
                     List<Guid> myArenaEquipementList = myAvatarEquipments.Where(f=>myArenaAvatarState.Equipments.Contains(f.ItemId)).Select(n => n.ItemId).ToList();
                     List<Guid> myArenaCostumeList = myAvatarCostumes.Where(f=>myArenaAvatarState.Costumes.Contains(f.ItemId)).Select(n => n.ItemId).ToList();
 
                     var myRuneSlotStateAddress = RuneSlotState.DeriveAddress(myAvatarAddress, BattleType.Arena);
-                    var myRuneSlotState = AccountStateExtensions.TryGetState(context.Source.AccountState, myRuneSlotStateAddress, out List myRawRuneSlotState)
+                    var myRuneSlotState = context.Source.WorldState.TryGetLegacyState(myRuneSlotStateAddress, out List myRawRuneSlotState)
                         ? new RuneSlotState(myRawRuneSlotState)
                         : new RuneSlotState(BattleType.Arena);
 
@@ -1098,7 +989,7 @@ namespace NineChronicles.Headless.GraphTypes
                     var myRuneSlotInfos = myRuneSlotState.GetEquippedRuneSlotInfos();
                     foreach (var address in myRuneSlotInfos.Select(info => RuneState.DeriveAddress(myAvatarAddress, info.RuneId)))
                     {
-                        if (AccountStateExtensions.TryGetState(context.Source.AccountState, address, out List rawRuneState))
+                        if (context.Source.WorldState.TryGetLegacyState(address, out List rawRuneState))
                         {
                             myRuneStates.Add(new RuneState(rawRuneState));
                         }
@@ -1139,7 +1030,7 @@ namespace NineChronicles.Headless.GraphTypes
                 {
                     var avatarAddress = context.GetArgument<Address>("avatarAddress");
                     var orderDigestListAddress = OrderDigestListState.DeriveAddress(avatarAddress);
-                    if (context.Source.WorldState.GetLegacyState(orderDigestListAddress) is Dictionary d)
+                    if (context.Source.WorldState.TryGetLegacyState(orderDigestListAddress, out List runes))
                     {
                         return new RuneState(runes);
                     }

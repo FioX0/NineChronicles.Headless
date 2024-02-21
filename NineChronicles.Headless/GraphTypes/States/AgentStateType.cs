@@ -50,7 +50,7 @@ namespace NineChronicles.Headless.GraphTypes.States
                         x => new AvatarStateType.AvatarStateContext(
                             x,
                             context.Source.WorldState,
-                            context.Source.BlockIndex,
+                            context.Source.BlockIndex!.Value,
                             context.Source.StateMemoryCache));
                 });
             Field<NonNullGraphType<StringGraphType>>(
