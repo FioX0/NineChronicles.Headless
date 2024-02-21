@@ -14,7 +14,6 @@ using Libplanet.Headless;
 using Libplanet.Headless.Hosting;
 using Libplanet.Net;
 using Libplanet.Store;
-using Libplanet.Types.Blocks;
 using Microsoft.Extensions.Hosting;
 using Nekoyume.Blockchain;
 using Nekoyume.Blockchain.Policy;
@@ -26,6 +25,7 @@ using Nito.AsyncEx;
 using Serilog;
 using Serilog.Events;
 using StrictRenderer = Libplanet.Blockchain.Renderers.Debug.ValidatingActionRenderer;
+using Nekoyume;
 
 namespace NineChronicles.Headless
 {
@@ -72,7 +72,7 @@ namespace NineChronicles.Headless
             PrivateKey? minerPrivateKey,
             LibplanetNodeServiceProperties properties,
             IBlockPolicy blockPolicy,
-            NetworkType networkType,
+            Planet planet,
             IActionLoader actionLoader,
             Progress<BlockSyncState>? preloadProgress = null,
             bool ignoreBootstrapFailure = false,
@@ -201,14 +201,15 @@ namespace NineChronicles.Headless
                     );
                 };
 
-            var blockPolicy = NineChroniclesNodeService.GetBlockPolicy(
-                properties.NetworkType,
-                properties.ActionLoader);
+            IBlockPolicy blockPolicy = GetBlockPolicy(
+                properties.Planet,
+                properties.ActionLoader
+            );
             var service = new NineChroniclesNodeService(
                 properties.MinerPrivateKey,
                 properties.Libplanet,
                 blockPolicy,
-                properties.NetworkType,
+                properties.Planet,
                 properties.ActionLoader,
                 preloadProgress: progress,
                 ignoreBootstrapFailure: properties.IgnoreBootstrapFailure,
@@ -255,22 +256,8 @@ namespace NineChronicles.Headless
             return service;
         }
 
-        internal static IBlockPolicy GetBlockPolicy(NetworkType networkType, IActionLoader actionLoader)
-        {
-            var source = new BlockPolicySource(actionLoader);
-            return networkType switch
-            {
-                NetworkType.Main => source.GetPolicy(),
-                NetworkType.Internal => source.GetInternalPolicy(),
-                NetworkType.Permanent => source.GetPermanentPolicy(),
-                NetworkType.Test => source.GetTestPolicy(),
-                NetworkType.Default => source.GetDefaultPolicy(),
-                _ => throw new ArgumentOutOfRangeException(nameof(networkType), networkType, null),
-            };
-        }
-
-        internal static IBlockPolicy GetTestBlockPolicy() =>
-            new BlockPolicySource().GetTestPolicy();
+        internal static IBlockPolicy GetBlockPolicy(Planet planet, IActionLoader actionLoader)
+             => new BlockPolicySource(actionLoader).GetPolicy(planet);
 
         public Task<bool> CheckPeer(string addr) => NodeService?.CheckPeer(addr) ?? throw new InvalidOperationException();
 
@@ -293,7 +280,7 @@ namespace NineChronicles.Headless
             standaloneContext.Store = Store;
             standaloneContext.Swarm = Swarm;
             standaloneContext.CurrencyFactory =
-                new CurrencyFactory(() => standaloneContext.BlockChain.GetAccountState(standaloneContext.BlockChain.Tip.Hash));
+                new CurrencyFactory(() => standaloneContext.BlockChain.GetWorldState(standaloneContext.BlockChain.Tip.Hash));
             standaloneContext.FungibleAssetValueFactory =
                 new FungibleAssetValueFactory(standaloneContext.CurrencyFactory);
             BootstrapEnded.WaitAsync().ContinueWith((task) =>

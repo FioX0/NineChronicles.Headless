@@ -12,6 +12,7 @@ using Bencodex;
 using Bencodex.Types;
 using GraphQL.Execution;
 using Libplanet.Action;
+using Libplanet.Action.State;
 using Libplanet.Action.Sys;
 using Libplanet.Blockchain;
 using Libplanet.Common;
@@ -28,9 +29,11 @@ using Libplanet.Types.Tx;
 using Nekoyume;
 using Nekoyume.Action;
 using Nekoyume.Action.Loader;
+using Nekoyume.Blockchain.Policy;
 using Nekoyume.Helper;
 using Nekoyume.Model;
 using Nekoyume.Model.State;
+using Nekoyume.Module;
 using Nekoyume.TableData;
 using NineChronicles.Headless.Properties;
 using NineChronicles.Headless.Tests.Common;
@@ -53,7 +56,7 @@ namespace NineChronicles.Headless.Tests.GraphTypes
         public async Task GetState()
         {
             Address adminStateAddress = AdminState.Address;
-            var result = await ExecuteQueryAsync($"query {{ state(address: \"{adminStateAddress}\") }}");
+            var result = await ExecuteQueryAsync($"query {{ state(accountAddress: \"{ReservedAddresses.LegacyAccount}\", address: \"{adminStateAddress}\") }}");
             var data = (Dictionary<string, object>)((ExecutionNode)result.Data!).ToValue()!;
             IValue rawVal = new Codec().Decode(ByteUtil.ParseHex((string)data!["state"]));
             AdminState adminState = new AdminState((Dictionary)rawVal);
@@ -510,10 +513,10 @@ namespace NineChronicles.Headless.Tests.GraphTypes
                 ConsensusSeeds = ImmutableList<BoundPeer>.Empty,
                 ConsensusPeers = ImmutableList<BoundPeer>.Empty
             };
-            var blockPolicy = NineChroniclesNodeService.GetTestBlockPolicy();
+            var blockPolicy = new BlockPolicySource().GetPolicy();
 
             var service = new NineChroniclesNodeService(
-                userPrivateKey, properties, blockPolicy, NetworkType.Test, StaticActionLoaderSingleton.Instance);
+                userPrivateKey, properties, blockPolicy, Planet.Odin, StaticActionLoaderSingleton.Instance);
             StandaloneContextFx.NineChroniclesNodeService = service;
             StandaloneContextFx.BlockChain = service.Swarm?.BlockChain;
 
@@ -611,7 +614,7 @@ namespace NineChronicles.Headless.Tests.GraphTypes
                 lastCommit: GenerateBlockCommit(BlockChain.Tip.Index, BlockChain.Tip.Hash, GenesisValidators));
             BlockChain.Append(block, GenerateBlockCommit(block.Index, block.Hash, GenesisValidators));
 
-            var currency = new GoldCurrencyState((Dictionary)BlockChain.GetState(Addresses.GoldCurrency)).Currency;
+            var currency = new GoldCurrencyState((Dictionary)BlockChain.GetWorldState().GetLegacyState(Addresses.GoldCurrency)).Currency;
             Transaction MakeTx(ActionBase action)
             {
                 return BlockChain.MakeTransaction(ProposerPrivateKey, new ActionBase[] { action });
@@ -619,7 +622,6 @@ namespace NineChronicles.Headless.Tests.GraphTypes
             var txs = new[]
             {
                 MakeTx(new TransferAsset0(sender, recipient, new FungibleAssetValue(currency, 1, 0), memo)),
-                MakeTx(new TransferAsset2(sender, recipient, new FungibleAssetValue(currency, 1, 0), memo)),
                 MakeTx(new TransferAsset(sender, recipient, new FungibleAssetValue(currency, 1, 0), memo)),
             };
 
@@ -895,8 +897,8 @@ namespace NineChronicles.Headless.Tests.GraphTypes
                 ConsensusPeers = ImmutableList<BoundPeer>.Empty
             };
 
-            var blockPolicy = NineChroniclesNodeService.GetBlockPolicy(NetworkType.Test, StaticActionLoaderSingleton.Instance);
-            var service = new NineChroniclesNodeService(userPrivateKey, properties, blockPolicy, NetworkType.Test, StaticActionLoaderSingleton.Instance);
+            var blockPolicy = NineChroniclesNodeService.GetBlockPolicy(Planet.Odin, StaticActionLoaderSingleton.Instance);
+            var service = new NineChroniclesNodeService(userPrivateKey, properties, blockPolicy, Planet.Odin, StaticActionLoaderSingleton.Instance);
             StandaloneContextFx.NineChroniclesNodeService = service;
             StandaloneContextFx.BlockChain = service.Swarm?.BlockChain;
 
@@ -982,9 +984,9 @@ namespace NineChronicles.Headless.Tests.GraphTypes
                 ConsensusSeeds = ImmutableList<BoundPeer>.Empty,
                 ConsensusPeers = ImmutableList<BoundPeer>.Empty
             };
-            var blockPolicy = NineChroniclesNodeService.GetTestBlockPolicy();
+            var blockPolicy = new BlockPolicySource().GetPolicy();
 
-            var service = new NineChroniclesNodeService(userPrivateKey, properties, blockPolicy, NetworkType.Test, StaticActionLoaderSingleton.Instance);
+            var service = new NineChroniclesNodeService(userPrivateKey, properties, blockPolicy, Planet.Odin, StaticActionLoaderSingleton.Instance);
             StandaloneContextFx.NineChroniclesNodeService = service;
             StandaloneContextFx.BlockChain = service.Swarm?.BlockChain;
 
@@ -1060,9 +1062,9 @@ namespace NineChronicles.Headless.Tests.GraphTypes
                 ConsensusSeeds = ImmutableList<BoundPeer>.Empty,
                 ConsensusPeers = ImmutableList<BoundPeer>.Empty
             };
-            var blockPolicy = NineChroniclesNodeService.GetTestBlockPolicy();
+            var blockPolicy = new BlockPolicySource().GetPolicy();
 
-            var service = new NineChroniclesNodeService(userPrivateKey, properties, blockPolicy, NetworkType.Test, StaticActionLoaderSingleton.Instance);
+            var service = new NineChroniclesNodeService(userPrivateKey, properties, blockPolicy, Planet.Odin, StaticActionLoaderSingleton.Instance);
             StandaloneContextFx.NineChroniclesNodeService = service;
             StandaloneContextFx.BlockChain = service.Swarm?.BlockChain;
 
@@ -1103,7 +1105,7 @@ namespace NineChronicles.Headless.Tests.GraphTypes
             var goldCurrency = Currency.Legacy("NCG", 2, null);
 #pragma warning restore CS0618
 
-            var blockPolicy = NineChroniclesNodeService.GetTestBlockPolicy();
+            var blockPolicy = new BlockPolicySource().GetPolicy();
             var validatorSetCandidate = new ValidatorSet(new[]
             {
                 new Libplanet.Types.Consensus.Validator(ProposerPrivateKey.PublicKey, BigInteger.One),
@@ -1171,7 +1173,7 @@ namespace NineChronicles.Headless.Tests.GraphTypes
                 ConsensusPeers = ImmutableList<BoundPeer>.Empty,
             };
 
-            return new NineChroniclesNodeService(privateKey, properties, blockPolicy, NetworkType.Test, StaticActionLoaderSingleton.Instance);
+            return new NineChroniclesNodeService(privateKey, properties, blockPolicy, Planet.Odin, StaticActionLoaderSingleton.Instance);
         }
 
         private (ProtectedPrivateKey, string) CreateProtectedPrivateKey()

@@ -10,9 +10,7 @@ using GraphQL;
 using GraphQL.Execution;
 using GraphQL.NewtonsoftJson;
 using Lib9c;
-using Libplanet;
 using Libplanet.Action;
-using Libplanet.Action.Loader;
 using Libplanet.Action.Sys;
 using Libplanet.Blockchain;
 using Libplanet.Blockchain.Policies;
@@ -29,6 +27,7 @@ using NineChronicles.Headless.Tests.Common;
 using NineChronicles.Headless.Utils;
 using Xunit;
 using static NineChronicles.Headless.NCActionUtils;
+using Nekoyume.Blockchain.Policy;
 
 namespace NineChronicles.Headless.Tests.GraphTypes
 {
@@ -44,7 +43,7 @@ namespace NineChronicles.Headless.Tests.GraphTypes
         {
             _store = new DefaultStore(null);
             _stateStore = new TrieStateStore(new DefaultKeyValueStore(null));
-            IBlockPolicy policy = NineChroniclesNodeService.GetTestBlockPolicy();
+            IBlockPolicy policy = new BlockPolicySource().GetPolicy();
             var actionEvaluator = new ActionEvaluator(
                 _ => policy.BlockAction,
                 _stateStore,
@@ -403,7 +402,7 @@ namespace NineChronicles.Headless.Tests.GraphTypes
 
         private Task<ExecutionResult> ExecuteAsync(string query)
         {
-            var currencyFactory = new CurrencyFactory(() => _blockChain.GetAccountState(_blockChain.Tip.Hash));
+            var currencyFactory = new CurrencyFactory(() => _blockChain.GetWorldState(_blockChain.Tip.Hash));
             var fungibleAssetValueFactory = new FungibleAssetValueFactory(currencyFactory);
             return GraphQLTestUtils.ExecuteQueryAsync<TransactionHeadlessQuery>(query, standaloneContext: new StandaloneContext
             {

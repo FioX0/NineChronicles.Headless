@@ -17,18 +17,18 @@ namespace NineChronicles.Headless.GraphTypes.States
     public class StateContext
     {
         public StateContext(
-            IAccountState accountState,
+            IWorldState worldState,
             long blockIndex,
             StateMemoryCache stateMemoryCache)
         {
-            AccountState = accountState;
+            WorldState = worldState;
             BlockIndex = blockIndex;
-            CurrencyFactory = new CurrencyFactory(() => accountState);
+            CurrencyFactory = new CurrencyFactory(() => worldState);
             FungibleAssetValueFactory = new FungibleAssetValueFactory(CurrencyFactory);
             StateMemoryCache = stateMemoryCache;
         }
 
-        public IAccountState AccountState { get; }
+        public IWorldState WorldState { get; }
 
         public long? BlockIndex { get; }
 
@@ -110,12 +110,6 @@ namespace NineChronicles.Headless.GraphTypes.States
         public CurrencyFactory CurrencyFactory { get; }
 
         public FungibleAssetValueFactory FungibleAssetValueFactory { get; }
-
-        public IValue? GetState(Address address) => AccountState.GetState(address);
-
-        public IReadOnlyList<IValue?> GetStates(IReadOnlyList<Address> addresses) => AccountState.GetStates(addresses);
-
-        public FungibleAssetValue GetBalance(Address address, Currency currency) => AccountState.GetBalance(address, currency);
 
         public StateMemoryCache StateMemoryCache { get; }
     }
