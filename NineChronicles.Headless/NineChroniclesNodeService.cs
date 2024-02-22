@@ -257,7 +257,17 @@ namespace NineChronicles.Headless
         }
 
         internal static IBlockPolicy GetBlockPolicy(Planet planet, IActionLoader actionLoader)
-             => new BlockPolicySource(actionLoader).GetPolicy(planet);
+        {
+            var source = new BlockPolicySource(actionLoader);
+            return planet switch
+            {
+                Planet.Odin => source.GetPolicy(),
+                _ => throw new ArgumentException(
+                    $"Can't retrieve policy for given planet ({planet})",
+                    nameof(planet)
+                ),
+            };
+        }
 
         public Task<bool> CheckPeer(string addr) => NodeService?.CheckPeer(addr) ?? throw new InvalidOperationException();
 

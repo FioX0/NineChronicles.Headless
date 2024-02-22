@@ -314,17 +314,17 @@ namespace NineChronicles.Headless.GraphTypes
                     List<Guid> enemyArenaCostumeList = enemyAvatarCostumes.Where(f=>enemyArenaAvatarState.Costumes.Contains(f.ItemId)).Select(n => n.ItemId).ToList();
 
                     var enemyRuneSlotStateAddress = RuneSlotState.DeriveAddress(enemyAvatarAddress, BattleType.Arena);
-                    var enemyRuneSlotState = context.Source.WorldState.TryGetLegacyState(myRuneSlotStateAddress, out List enemyRawRuneSlotState)
+                    var enemyRuneSlotState = context.Source.WorldState.TryGetLegacyState(enemyRuneSlotStateAddress, out List enemyRawRuneSlotState)
                         ? new RuneSlotState(enemyRawRuneSlotState)
                         : new RuneSlotState(BattleType.Arena);
 
                     var enemyRuneStates = new List<RuneState>();
                     var enemyRuneSlotInfos = enemyRuneSlotState.GetEquippedRuneSlotInfos();
-                    foreach (var address in myRuneSlotInfos.Select(info => RuneState.DeriveAddress(enemyAvatarAddress, info.RuneId)))
+                    foreach (var address in enemyRuneSlotInfos.Select(info => RuneState.DeriveAddress(enemyAvatarAddress, info.RuneId)))
                     {
                         if (context.Source.WorldState.TryGetLegacyState(address, out List rawRuneState))
                         {
-                            myRuneStates.Add(new RuneState(rawRuneState));
+                            enemyRuneStates.Add(new RuneState(rawRuneState));
                         }
                     }
 

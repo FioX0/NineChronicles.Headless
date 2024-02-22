@@ -182,13 +182,14 @@ namespace NineChronicles.Headless.GraphTypes
                     var accountState = chain.GetWorldState(previousHash);
 
                     var sheets = accountState.GetSheets(containArenaSimulatorSheets: true, sheetTypes: new[]
-{
+                    {
                             typeof(ArenaSheet),
                             typeof(ItemRequirementSheet),
                             typeof(EquipmentItemRecipeSheet),
                             typeof(EquipmentItemSubRecipeSheetV2),
                             typeof(EquipmentItemOptionSheet),
-                            typeof(MaterialItemSheet), });
+                            typeof(MaterialItemSheet), 
+                    });
 
                     var myAvatarAddress = innerAction.myAvatarAddress;
 
@@ -243,7 +244,7 @@ namespace NineChronicles.Headless.GraphTypes
 
                     var enemyAvatarState = accountState.GetEnemyAvatarState(enemyAvatarAddress);
                     var enemyRuneSlotStateAddress = RuneSlotState.DeriveAddress(enemyAvatarAddress, BattleType.Arena);
-                    var enemyRuneSlotState = accountState.TryGetLegacyState(myRuneSlotStateAddress, out List enemyRawRuneSlotState)
+                    var enemyRuneSlotState = accountState.TryGetLegacyState(enemyRuneSlotStateAddress, out List enemyRawRuneSlotState)
                         ? new RuneSlotState(enemyRawRuneSlotState)
                         : new RuneSlotState(BattleType.Arena);
 
@@ -257,7 +258,8 @@ namespace NineChronicles.Headless.GraphTypes
                         }
                     }
 
-                    ArenaPlayerDigest ExtraMyArenaPlayerDigest = new ArenaPlayerDigest(AvatarState,
+                    ArenaPlayerDigest ExtraMyArenaPlayerDigest = new ArenaPlayerDigest(
+                        AvatarState,
                         myItemSlotState.Equipments,
                         myItemSlotState.Costumes,
                         runeStates);
