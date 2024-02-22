@@ -1029,8 +1029,10 @@ namespace NineChronicles.Headless.GraphTypes
                 resolve: context =>
                 {
                     var avatarAddress = context.GetArgument<Address>("avatarAddress");
-                    var orderDigestListAddress = OrderDigestListState.DeriveAddress(avatarAddress);
-                    if (context.Source.WorldState.TryGetLegacyState(orderDigestListAddress, out List runes))
+                    var runeId = context.GetArgument<int>("runeId");
+
+                    var deriveAddress = RuneState.DeriveAddress(avatarAddress, runeId);
+                    if (context.Source.WorldState.TryGetLegacyState(deriveAddress, out List runes))
                     {
                         return new RuneState(runes);
                     }
