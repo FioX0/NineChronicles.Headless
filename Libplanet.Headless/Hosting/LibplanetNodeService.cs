@@ -643,9 +643,10 @@ namespace Libplanet.Headless.Hosting
         private async Task<string> DownloadPlugin(string url)
         {
             var path = Path.Combine(Environment.CurrentDirectory, "plugins");
-            Directory.CreateDirectory(path);
             var hashed = url.GetHashCode().ToString();
             var logger = Log.ForContext("LibplanetNodeService", hashed);
+            logger.Debug(path);
+            Directory.CreateDirectory(path);
             using var httpClient = new HttpClient();
             var downloadPath = Path.Join(path, hashed + ".zip");
             var extractPath = Path.Join(path, hashed);
