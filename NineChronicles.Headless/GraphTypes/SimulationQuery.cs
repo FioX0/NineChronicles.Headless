@@ -73,26 +73,28 @@ namespace NineChronicles.Headless.GraphTypes
                         containQuestSheet: true,
                         containSimulatorSheets: true,
                         sheetTypes: new[]
-{
-                        typeof(WorldSheet),
-                        typeof(StageSheet),
-                        typeof(StageWaveSheet),
-                        typeof(EnemySkillSheet),
-                        typeof(CostumeStatSheet),
-                        typeof(SkillSheet),
-                        typeof(QuestRewardSheet),
-                        typeof(QuestItemRewardSheet),
-                        typeof(EquipmentItemRecipeSheet),
-                        typeof(WorldUnlockSheet),
-                        typeof(MaterialItemSheet),
-                        typeof(ItemRequirementSheet),
-                        typeof(EquipmentItemRecipeSheet),
-                        typeof(EquipmentItemSubRecipeSheetV2),
-                        typeof(EquipmentItemOptionSheet),
-                        typeof(CrystalStageBuffGachaSheet),
-                        typeof(CrystalRandomBuffSheet),
-                        typeof(StakeActionPointCoefficientSheet),
-                        typeof(RuneListSheet), });
+                        {
+                            typeof(WorldSheet),
+                            typeof(StageSheet),
+                            typeof(StageWaveSheet),
+                            typeof(EnemySkillSheet),
+                            typeof(CostumeStatSheet),
+                            typeof(SkillSheet),
+                            typeof(QuestRewardSheet),
+                            typeof(QuestItemRewardSheet),
+                            typeof(EquipmentItemRecipeSheet),
+                            typeof(WorldUnlockSheet),
+                            typeof(MaterialItemSheet),
+                            typeof(ItemRequirementSheet),
+                            typeof(EquipmentItemRecipeSheet),
+                            typeof(EquipmentItemSubRecipeSheetV2),
+                            typeof(EquipmentItemOptionSheet),
+                            typeof(CrystalStageBuffGachaSheet),
+                            typeof(CrystalRandomBuffSheet),
+                            typeof(StakeActionPointCoefficientSheet),
+                            typeof(RuneListSheet),
+                            typeof(CollectionSheet),
+                        });
 
                     var materialItemSheet = sheets.GetSheet<MaterialItemSheet>();
                     var characterSheet = sheets.GetSheet<CharacterSheet>();
@@ -158,6 +160,29 @@ namespace NineChronicles.Headless.GraphTypes
                             skillSheet);
                         skillsOnWaveStart.Add(skill);
                     }
+
+                    var collectionStates = context.Source.WorldState.GetCollectionStates(new[] { myAvatarAddress });
+                    var collectionExist = collectionStates.Count > 0;
+
+                    var modifiers = new Dictionary<Address, List<StatModifier>>
+                    {
+                        [myAvatarAddress] = new(),
+                    };
+                    if (collectionExist)
+                    {
+                        var collectionSheet = sheets.GetSheet<CollectionSheet>();
+#pragma warning disable LAA1002
+                        foreach (var (address, state) in collectionStates)
+#pragma warning restore LAA1002
+                        {
+                            var modifier = modifiers[address];
+                            foreach (var collectionId in state.Ids)
+                            {
+                                modifier.AddRange(collectionSheet[collectionId].StatModifiers);
+                            }
+                        }
+                    }
+
                     Random rnd  =new Random();
 
                     var simulatorSheets = sheets.GetSimulatorSheets();
@@ -185,7 +210,8 @@ namespace NineChronicles.Headless.GraphTypes
                             simulatorSheets,
                             sheets.GetSheet<EnemySkillSheet>(),
                             sheets.GetSheet<CostumeStatSheet>(),
-                            StageSimulator.GetWaveRewards(random, stageRow, materialItemSheet));
+                            StageSimulator.GetWaveRewards(random, stageRow, materialItemSheet),
+                            modifiers[myAvatarAddress]);
 
                         simulator.Simulate();
 
@@ -252,6 +278,7 @@ namespace NineChronicles.Headless.GraphTypes
                         typeof(EquipmentItemOptionSheet),
                         typeof(MaterialItemSheet),
                         typeof(RuneListSheet),
+                        typeof(CollectionSheet),
                     });
 
                     if(simulationCount < 1 || simulationCount > 1000)
@@ -340,6 +367,29 @@ namespace NineChronicles.Headless.GraphTypes
                         enemyArenaCostumeList,
                         enemyRuneStates);
 
+                    var collectionStates = context.Source.WorldState.GetCollectionStates(new[] { myAvatarAddress, enemyAvatarAddress });
+                    var collectionExist = collectionStates.Count > 0;
+
+                    var modifiers = new Dictionary<Address, List<StatModifier>>
+                    {
+                        [myAvatarAddress] = new(),
+                        [enemyAvatarAddress] = new(),
+                    };
+                    if (collectionExist)
+                    {
+                        var collectionSheet = sheets.GetSheet<CollectionSheet>();
+#pragma warning disable LAA1002
+                        foreach (var (address, state) in collectionStates)
+#pragma warning restore LAA1002
+                        {
+                            var modifier = modifiers[address];
+                            foreach (var collectionId in state.Ids)
+                            {
+                                modifier.AddRange(collectionSheet[collectionId].StatModifiers);
+                            }
+                        }
+                    }
+
                     Random rnd  =new Random();          
 
                     int win = 0;
@@ -359,6 +409,8 @@ namespace NineChronicles.Headless.GraphTypes
                             myArenaPlayerDigest,
                             enemyArenaPlayerDigest,
                             arenaSheets,
+                            modifiers[myAvatarAddress],
+                            modifiers[enemyAvatarAddress],
                             true);
                         if(log.Result.ToString() == "Win")
                         {

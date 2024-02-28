@@ -1,6 +1,7 @@
 #nullable enable
 using System;
 using System.Collections.Generic;
+using System.Collections.Immutable;
 using System.Linq;
 using Bencodex;
 using Bencodex.Types;
@@ -23,6 +24,7 @@ using Nekoyume.Extensions;
 using Nekoyume.Model;
 using Nekoyume.Model.Arena;
 using Nekoyume.Model.EnumType;
+using Nekoyume.Model.Stat;
 using Nekoyume.Model.State;
 using Nekoyume.Module;
 using Nekoyume.TableData;
@@ -188,8 +190,10 @@ namespace NineChronicles.Headless.GraphTypes
                             typeof(EquipmentItemRecipeSheet),
                             typeof(EquipmentItemSubRecipeSheetV2),
                             typeof(EquipmentItemOptionSheet),
-                            typeof(MaterialItemSheet), 
+                            typeof(MaterialItemSheet),
+                            typeof(CollectionSheet),
                     });
+
 
                     var myAvatarAddress = innerAction.myAvatarAddress;
 
@@ -258,6 +262,29 @@ namespace NineChronicles.Headless.GraphTypes
                         }
                     }
 
+                    var collectionStates = accountState.GetCollectionStates(new[] { myAvatarAddress, enemyAvatarAddress });
+                    var collectionExist = collectionStates.Count > 0;
+
+                    var modifiers = new Dictionary<Address, List<StatModifier>>
+                    {
+                        [myAvatarAddress] = new(),
+                        [enemyAvatarAddress] = new(),
+                    };
+                    if (collectionExist)
+                    {
+                        var collectionSheet = sheets.GetSheet<CollectionSheet>();
+                        #pragma warning disable LAA1002
+                        foreach (var (address, state) in collectionStates)
+                        #pragma warning restore LAA1002
+                        {
+                            var modifier = modifiers[address];
+                            foreach (var collectionId in state.Ids)
+                            {
+                                modifier.AddRange(collectionSheet[collectionId].StatModifiers);
+                            }
+                        }
+                    }
+
                     ArenaPlayerDigest ExtraMyArenaPlayerDigest = new ArenaPlayerDigest(
                         AvatarState,
                         myItemSlotState.Equipments,
@@ -269,9 +296,8 @@ namespace NineChronicles.Headless.GraphTypes
                         enemyItemSlotState.Costumes,
                         enemyRuneStates);
                     var arenaSheets = sheets.GetArenaSimulatorSheets();
-                    var log = simulator.Simulate(ExtraMyArenaPlayerDigest, ExtraEnemyArenaPlayerDigest, arenaSheets, true);
+                    var log = simulator.Simulate(ExtraMyArenaPlayerDigest, ExtraEnemyArenaPlayerDigest, arenaSheets, modifiers[myAvatarAddress], modifiers[enemyAvatarAddress], true);
                     return log.Events;
-
                 }
             );
 

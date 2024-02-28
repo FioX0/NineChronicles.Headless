@@ -28,6 +28,7 @@ using NineChronicles.Headless.GraphTypes.States;
 using NineChronicles.Headless.GraphTypes.States.Models;
 using NineChronicles.Headless.GraphTypes.States.Models.Item.Enum;
 using NineChronicles.Headless.GraphTypes.States.Models.Table;
+using Nekoyume.Model.Stat;
 
 
 namespace NineChronicles.Headless.GraphTypes
@@ -700,10 +701,37 @@ namespace NineChronicles.Headless.GraphTypes
                             var avatarCostumes = avatar.inventory.Costumes;
                             List<Equipment> arenaEquipementList = avatarEquipments.Where(f => arenaAvatarState.Equipments.Contains(f.ItemId)).Select(n => n).ToList();
                             List<Costume> arenaCostumeList = avatarCostumes.Where(f => arenaAvatarState.Costumes.Contains(f.ItemId)).Select(n => n).ToList();
+
+                            var collectionStates = context.Source.WorldState.GetCollectionStates(new[] { participant });
+                            var collectionExist = collectionStates.Count > 0;
+
+                            var modifiers = new Dictionary<Address, List<StatModifier>>
+                            {
+                                [participant] = new(),
+                            };
+                            if (collectionExist)
+                            {
+                                var collectionSheet = sheets.GetSheet<CollectionSheet>();
+#pragma warning disable LAA1002
+                                foreach (var (address, state) in collectionStates)
+#pragma warning restore LAA1002
+                                {
+                                    var modifier = modifiers[address];
+                                    foreach (var collectionId in state.Ids)
+                                    {
+                                        modifier.AddRange(collectionSheet[collectionId].StatModifiers);
+                                    }
+                                }
+                            }
+
                             var cp = Nekoyume.Battle.CPHelper.TotalCP(
-                                arenaEquipementList, arenaCostumeList,
-                                runeOptions, avatar.level,
-                                characterRow, costumeStatSheet
+                                arenaEquipementList, 
+                                arenaCostumeList,
+                                runeOptions, 
+                                avatar.level,
+                                characterRow, 
+                                costumeStatSheet,
+                                modifiers[participant]
                             );
                             var arenaInfo = new ChampionArenaInfo
                             {
