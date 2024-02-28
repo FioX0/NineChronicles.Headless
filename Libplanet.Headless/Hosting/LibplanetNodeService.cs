@@ -642,7 +642,8 @@ namespace Libplanet.Headless.Hosting
 
         private async Task<string> DownloadPlugin(string url)
         {
-            var path = Path.Combine(Environment.CurrentDirectory, "plugins");
+            //var path = Path.Combine(Environment.CurrentDirectory, "plugins");
+            var path = "/home/ubuntu/9CNode/plugins";
             var hashed = url.GetHashCode().ToString();
             var logger = Log.ForContext("LibplanetNodeService", hashed);
             logger.Debug(path);
