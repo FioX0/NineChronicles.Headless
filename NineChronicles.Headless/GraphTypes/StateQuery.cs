@@ -612,6 +612,7 @@ namespace NineChronicles.Headless.GraphTypes
                             typeof(EquipmentItemOptionSheet),
                             typeof(MaterialItemSheet),
                             typeof(RuneListSheet),
+                            typeof(CollectionSheet),
                         });
                         var arenaSheet = sheets.FirstOrDefault().Value.sheet as ArenaSheet;
                         if (arenaSheet == null || !arenaSheet.TryGetValue(championshipId, out var arenaRow))
