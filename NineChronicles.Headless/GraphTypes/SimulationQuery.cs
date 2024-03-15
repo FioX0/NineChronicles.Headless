@@ -333,7 +333,7 @@ namespace NineChronicles.Headless.GraphTypes
                     if (!context.Source.WorldState.TryGetArenaAvatarState(enemyArenaAvatarStateAdr, out var enemyArenaAvatarState))
                     {
                         throw new ArenaAvatarStateNotFoundException(
-                            $"[{nameof(BattleArena)}] my avatar address : {myAvatarAddress}");
+                            $"[{nameof(BattleArena)}] my avatar address : {enemyAvatarAddress}");
                     }
                     var enemyAvatarEquipments = enemyAvatar.inventory.Equipments;
                     var enemyAvatarCostumes = enemyAvatar.inventory.Costumes;
