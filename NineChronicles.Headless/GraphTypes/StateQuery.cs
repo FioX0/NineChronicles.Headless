@@ -29,6 +29,7 @@ using NineChronicles.Headless.GraphTypes.States.Models;
 using NineChronicles.Headless.GraphTypes.States.Models.Item.Enum;
 using NineChronicles.Headless.GraphTypes.States.Models.Table;
 using Nekoyume.Model.Stat;
+using System.Collections.Immutable;
 
 
 namespace NineChronicles.Headless.GraphTypes
@@ -970,7 +971,97 @@ namespace NineChronicles.Headless.GraphTypes
                     return null;
                 }
             );
-            
+
+            Field<NonNullGraphType<ByteStringType>>(
+                "buyProduct",
+                arguments: new QueryArguments(
+                    new QueryArgument<NonNullGraphType<AddressType>>
+                    {
+                        Name = "avatarAddress",
+                        Description = "The avatar address to enhance rune."
+                    },
+                    new QueryArgument<NonNullGraphType<StringGraphType>>
+                    {
+                        Name = "itemId",
+                        Description = "GUID in string of item"
+                    },
+                    new QueryArgument<NonNullGraphType<StringGraphType>>
+                    {
+                        Name = "productId",
+                        Description = "GUID in string of item"
+                    },
+                    new QueryArgument<NonNullGraphType<AddressType>>
+                    {
+                        Name = "sellAvatarAddress",
+                        Description = "The avatar address to enhance rune."
+                    },
+                    new QueryArgument<NonNullGraphType<IntGraphType>>
+                    {
+                        Name = "price",
+                        Description = "The avatar address to enhance rune."
+                    },
+                    new QueryArgument<NonNullGraphType<IntGraphType>>
+                    {
+                        Name = "subType",
+                        Description = "The avatar address to enhance rune."
+                    },
+                    new QueryArgument<NonNullGraphType<AddressType>>
+                    {
+                        Name = "sellAgentAddress",
+                        Description = "The avatar address to enhance rune."
+                    }),
+                resolve: context =>
+                {
+                    var avatarAddress = context.GetArgument<Address>("avatarAddress");
+                    var itemId = context.GetArgument<string>("itemId");
+                    var productId = context.GetArgument<string>("productId");
+                    var price = context.GetArgument<int>("price");
+                    var subType = context.GetArgument<int>("subType");
+                    var sellAvatarAddress = context.GetArgument<Address>("sellAvatarAddress");
+                    var sellAgentAddress = context.GetArgument<Address>("sellAgentAddress");
+
+                    ItemProductInfo itemProductInfo = new ItemProductInfo();
+                    itemProductInfo.AvatarAddress = avatarAddress;
+
+                    if (!context.Source.CurrencyFactory.TryGetCurrency("NCG", out var currency))
+                    {
+                        throw new ExecutionError($"Invalid currency enum StateQueryBuy");
+                    }
+
+                    itemProductInfo.Price = FungibleAssetValue.Parse(currency, price.ToString());
+                    itemProductInfo.Type = Nekoyume.Model.Market.ProductType.NonFungible;
+                    itemProductInfo.TradableId = Guid.Parse(itemId);
+                    itemProductInfo.ProductId = Guid.Parse(productId);
+                    itemProductInfo.AgentAddress = sellAgentAddress;
+                    itemProductInfo.AvatarAddress = sellAvatarAddress;
+                    itemProductInfo.ItemSubType = ItemSubType.Weapon;
+
+                    switch (subType)
+                    {
+                        case 6:
+                            itemProductInfo.ItemSubType = ItemSubType.Weapon; break;
+                        case 7:
+                            itemProductInfo.ItemSubType = ItemSubType.Armor; break;
+                        case 8:
+                            itemProductInfo.ItemSubType = ItemSubType.Belt; break;
+                        case 9:
+                            itemProductInfo.ItemSubType = ItemSubType.Necklace; break;
+                        case 10:
+                            itemProductInfo.ItemSubType = ItemSubType.Ring; break;
+                    }
+
+                    List<IProductInfo> holds = new List<IProductInfo>();
+                    holds.Add(itemProductInfo);
+
+                    ActionBase action = new BuyProduct
+                    {
+                        AvatarAddress = avatarAddress,
+                        ProductInfos = holds,
+                    };
+                    return _codec.Encode(action.PlainValue);
+                }
+            );
+
             Field<NonNullGraphType<ByteStringType>>(
                 name: "BattleArena",
                 arguments: new QueryArguments(
