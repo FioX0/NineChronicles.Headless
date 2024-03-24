@@ -903,9 +903,9 @@ namespace NineChronicles.Headless.GraphTypes
                     },
                     new QueryArgument<ListGraphType<NonNullGraphType<RuneSlotInfoInputType>>>
                     {
-                        Description = "list of rune slot",
+                        Name = "runeSlotInfos",
                         DefaultValue = new List<RuneSlotInfo>(),
-                        Name = "runeSlotInfos"
+                        Description = "List of rune slot info for equip."
                     }
                 ),
                 resolve: context =>
@@ -915,7 +915,7 @@ namespace NineChronicles.Headless.GraphTypes
                     int roundId = context.GetArgument<int>("roundId");
                     List<Guid> costumeIds = context.GetArgument<List<Guid>>("costumeIds") ?? new List<Guid>();
                     List<Guid> equipmentIds = context.GetArgument<List<Guid>>("equipmentIds") ?? new List<Guid>();
-                    var runeSlotInfos = context.GetArgument<List<RuneSlotInfo>>("runeSlotInfos");
+                    List<RuneSlotInfo> runeSlotInfos = context.GetArgument<List<RuneSlotInfo>>("runeSlotInfos");
 
                     ActionBase action = new JoinArena
                     {
@@ -1163,7 +1163,7 @@ namespace NineChronicles.Headless.GraphTypes
 
                     var myRuneStates = new List<RuneState>();
                     var myRuneSlotInfos = myRuneSlotState.GetEquippedRuneSlotInfos();
-                    foreach (var address in myRuneSlotInfos.Select(info => RuneState.DeriveAddress(myAvatarAddress, info.RuneId)))
+                    foreach (var address in myRuneSlotInfos.Select(info => RuneState.DeriveAddress(myArenaAvatarStateAdr, info.RuneId)))
                     {
                         if (context.Source.WorldState.TryGetLegacyState(address, out List rawRuneState))
                         {
