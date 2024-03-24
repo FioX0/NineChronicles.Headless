@@ -873,6 +873,63 @@ namespace NineChronicles.Headless.GraphTypes
                     }
                 }
             );
+            Field<NonNullGraphType<ByteStringType>>(
+                name: "joinArena",
+                arguments: new QueryArguments(
+                    new QueryArgument<NonNullGraphType<AddressType>>
+                    {
+                        Name = "avatarAddress",
+                        Description = "Avatar address."
+                    },
+                    new QueryArgument<NonNullGraphType<IntGraphType>>
+                    {
+                        Name = "championshipId",
+                        Description = "Championship ID."
+                    },
+                    new QueryArgument<NonNullGraphType<IntGraphType>>
+                    {
+                        Name = "roundId",
+                        Description = "round ID."
+                    },
+                    new QueryArgument<ListGraphType<GuidGraphType>>
+                    {
+                        Name = "equipmentIds",
+                        Description = "List of equipment id for equip."
+                    },
+                    new QueryArgument<ListGraphType<GuidGraphType>>
+                    {
+                        Name = "costumeIds",
+                        Description = "List of costume id for equip."
+                    },
+                    new QueryArgument<ListGraphType<NonNullGraphType<RuneSlotInfoInputType>>>
+                    {
+                        Description = "list of rune slot",
+                        DefaultValue = new List<RuneSlotInfo>(),
+                        Name = "runeSlotInfos"
+                    }
+                ),
+                resolve: context =>
+                {
+                    Address myAvatarAddress = context.GetArgument<Address>("avatarAddress");
+                    int championshipId = context.GetArgument<int>("championshipId");
+                    int roundId = context.GetArgument<int>("roundId");
+                    List<Guid> costumeIds = context.GetArgument<List<Guid>>("costumeIds") ?? new List<Guid>();
+                    List<Guid> equipmentIds = context.GetArgument<List<Guid>>("equipmentIds") ?? new List<Guid>();
+                    var runeSlotInfos = context.GetArgument<List<RuneSlotInfo>>("runeSlotInfos");
+
+                    ActionBase action = new JoinArena
+                    {
+                        avatarAddress = myAvatarAddress,
+                        championshipId = championshipId,
+                        costumes = costumeIds,
+                        equipments = equipmentIds,
+                        round = roundId,
+                        runeInfos = runeSlotInfos
+                    };                  
+
+                    return _codec.Encode(action.PlainValue);
+                }
+            );
             Field<GatchaStateType>(
                 "gachaBuff",
                 description: "Allows you to pull data ",
@@ -1124,7 +1181,7 @@ namespace NineChronicles.Headless.GraphTypes
                         round = currentRoundData.Round,
                         ticket = 1,
                         runeInfos = myRuneSlotInfos
-                    };                  
+                    };
 
                     return _codec.Encode(action.PlainValue);
                 }
