@@ -826,6 +826,7 @@ namespace NineChronicles.Headless.GraphTypes
             RegisterGarages();
             RegisterSummon();
             RegisterClaimItems();
+            RegisterRetrieveAvatarAssets();
 
             Field<NonNullGraphType<CraftQuery>>(
                 name: "craftQuery",

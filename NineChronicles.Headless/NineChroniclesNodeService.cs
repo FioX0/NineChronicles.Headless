@@ -203,7 +203,8 @@ namespace NineChronicles.Headless
 
             IBlockPolicy blockPolicy = GetBlockPolicy(
                 properties.Planet,
-                properties.ActionLoader
+                properties.ActionLoader,
+                properties.MaxTransactionPerBlock
             );
             var service = new NineChroniclesNodeService(
                 properties.MinerPrivateKey,
@@ -256,18 +257,8 @@ namespace NineChronicles.Headless
             return service;
         }
 
-        internal static IBlockPolicy GetBlockPolicy(Planet planet, IActionLoader actionLoader)
-        {
-            var source = new BlockPolicySource(actionLoader);
-            return planet switch
-            {
-                Planet.Odin => source.GetPolicy(),
-                _ => throw new ArgumentException(
-                    $"Can't retrieve policy for given planet ({planet})",
-                    nameof(planet)
-                ),
-            };
-        }
+        internal static IBlockPolicy GetBlockPolicy(Planet planet, IActionLoader actionLoader, int? maxTransactionPerBlock)
+            => new BlockPolicySource(actionLoader, maxTransactionPerBlock).GetPolicy(planet);
 
         public Task<bool> CheckPeer(string addr) => NodeService?.CheckPeer(addr) ?? throw new InvalidOperationException();
 
