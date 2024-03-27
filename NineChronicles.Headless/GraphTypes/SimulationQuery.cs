@@ -94,6 +94,7 @@ namespace NineChronicles.Headless.GraphTypes
                             typeof(StakeActionPointCoefficientSheet),
                             typeof(RuneListSheet),
                             typeof(CollectionSheet),
+                            typeof(DeBuffLimitSheet),
                         });
 
                     var materialItemSheet = sheets.GetSheet<MaterialItemSheet>();
@@ -186,6 +187,8 @@ namespace NineChronicles.Headless.GraphTypes
                     Random rnd  =new Random();
 
                     var simulatorSheets = sheets.GetSimulatorSheets();
+                    var deBuffLimitSheet = sheets.GetSheet<DeBuffLimitSheet>();
+                    var gameConfigState = context.Source.WorldState.GetGameConfigState();
 
                     int Wave0 = 0;
                     int Wave1 = 0;
@@ -211,7 +214,10 @@ namespace NineChronicles.Headless.GraphTypes
                             sheets.GetSheet<EnemySkillSheet>(),
                             sheets.GetSheet<CostumeStatSheet>(),
                             StageSimulator.GetWaveRewards(random, stageRow, materialItemSheet),
-                            modifiers[myAvatarAddress]);
+                            modifiers[myAvatarAddress],
+                            deBuffLimitSheet,
+                            shatterStrikeMaxDamage: gameConfigState.ShatterStrikeMaxDamage
+                            );
 
                         simulator.Simulate();
 
@@ -279,6 +285,7 @@ namespace NineChronicles.Headless.GraphTypes
                         typeof(MaterialItemSheet),
                         typeof(RuneListSheet),
                         typeof(CollectionSheet),
+                        typeof(DeBuffLimitSheet),
                     });
 
                     if(simulationCount < 1 || simulationCount > 1000)
@@ -390,6 +397,7 @@ namespace NineChronicles.Headless.GraphTypes
                         }
                     }
 
+                    var deBuffLimitSheet = sheets.GetSheet<DeBuffLimitSheet>();
                     Random rnd  =new Random();          
 
                     int win = 0;
@@ -411,6 +419,7 @@ namespace NineChronicles.Headless.GraphTypes
                             arenaSheets,
                             modifiers[myAvatarAddress],
                             modifiers[enemyAvatarAddress],
+                            deBuffLimitSheet,
                             true);
                         if(log.Result.ToString() == "Win")
                         {
@@ -724,16 +733,17 @@ namespace NineChronicles.Headless.GraphTypes
                });
         }
 
+
         public static void AddAndUnlockOption(
-             AgentState agentState,
-             PetState? petState,
-             Equipment equipment,
-             IRandom random,
-             EquipmentItemSubRecipeSheetV2.Row subRecipe,
-             EquipmentItemOptionSheet optionSheet,
-             PetOptionSheet petOptionSheet,
-             SkillSheet skillSheet
-         )
+            AgentState agentState,
+            PetState? petState,
+            Equipment equipment,
+            IRandom random,
+            EquipmentItemSubRecipeSheetV2.Row subRecipe,
+            EquipmentItemOptionSheet optionSheet,
+            PetOptionSheet petOptionSheet,
+            SkillSheet skillSheet
+        )
         {
             foreach (var optionInfo in subRecipe.Options
                 .OrderByDescending(e => e.Ratio)
@@ -768,7 +778,6 @@ namespace NineChronicles.Headless.GraphTypes
                     equipment.StatsMap.AddStatAdditionalValue(stat.StatType, stat.BaseValue);
                     equipment.Update(equipment.RequiredBlockIndex + optionInfo.RequiredBlockIndex);
                     equipment.optionCountFromCombination++;
-                    agentState.unlockedOptions.Add(optionRow.Id);
                 }
                 else
                 {
@@ -778,7 +787,6 @@ namespace NineChronicles.Headless.GraphTypes
                         equipment.Skills.Add(skill);
                         equipment.Update(equipment.RequiredBlockIndex + optionInfo.RequiredBlockIndex);
                         equipment.optionCountFromCombination++;
-                        agentState.unlockedOptions.Add(optionRow.Id);
                     }
                 }
             }

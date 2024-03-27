@@ -192,6 +192,7 @@ namespace NineChronicles.Headless.GraphTypes
                             typeof(EquipmentItemOptionSheet),
                             typeof(MaterialItemSheet),
                             typeof(CollectionSheet),
+                            typeof(DeBuffLimitSheet),
                     });
 
 
@@ -284,6 +285,7 @@ namespace NineChronicles.Headless.GraphTypes
                             }
                         }
                     }
+                    var deBuffLimitSheet = sheets.GetSheet<DeBuffLimitSheet>();
 
                     ArenaPlayerDigest ExtraMyArenaPlayerDigest = new ArenaPlayerDigest(
                         AvatarState,
@@ -296,7 +298,7 @@ namespace NineChronicles.Headless.GraphTypes
                         enemyItemSlotState.Costumes,
                         enemyRuneStates);
                     var arenaSheets = sheets.GetArenaSimulatorSheets();
-                    var log = simulator.Simulate(ExtraMyArenaPlayerDigest, ExtraEnemyArenaPlayerDigest, arenaSheets, modifiers[myAvatarAddress], modifiers[enemyAvatarAddress], true);
+                    var log = simulator.Simulate(ExtraMyArenaPlayerDigest, ExtraEnemyArenaPlayerDigest, arenaSheets, modifiers[myAvatarAddress], modifiers[enemyAvatarAddress], deBuffLimitSheet, true);
                     return log.Events;
                 }
             );
