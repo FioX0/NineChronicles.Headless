@@ -141,6 +141,42 @@ namespace NineChronicles.Headless.GraphTypes
 
                     return null;
                 });
+            Field<ListGraphType<ShardedShopStateV2Type>>(
+                name: "shardedShopAvatar",
+                description: "State for sharded shop.",
+                arguments: new QueryArguments(
+                    new QueryArgument<NonNullGraphType<ItemSubTypeEnumType>>
+                    {
+                        Name = "itemSubType",
+                        Description = "ItemSubType for shard. see from https://github.com/planetarium/lib9c/blob/main/Lib9c/Model/Item/ItemType.cs#L13"
+                    },
+                    new QueryArgument<NonNullGraphType<AddressType>>
+                    {
+                        Name = "avatarAddress",
+                        Description = "Address of avatar.",
+                    }),
+                resolve: context =>
+                {
+
+                    List<ShardedShopStateV2> listofShop = new List<ShardedShopStateV2>();
+                    var avatarAddress = context.GetArgument<Address>("avatarAddress");
+                    var subType = context.GetArgument<ItemSubType>("itemSubType");
+                    
+                    for(int nonceInt = 0;  nonceInt < 16; nonceInt++)
+                    {
+                        string nonce = nonceInt.ToString();
+                        if (context.Source.WorldState.GetLegacyState(ShardedShopStateV2.DeriveAddress(subType, nonce)) is { } state)
+                        {
+                            var heh = new ShardedShopStateV2((Dictionary)state);
+                            listofShop.Add(heh);
+                        }
+                    }
+                    if (listofShop.Any())
+                    {
+                        return listofShop;
+                    }
+                    return null;
+                });
             Field<WeeklyArenaStateType>(
                 name: "weeklyArena",
                 description: "State for weekly arena.",
