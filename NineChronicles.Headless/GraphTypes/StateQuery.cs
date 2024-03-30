@@ -142,31 +142,33 @@ namespace NineChronicles.Headless.GraphTypes
                     return null;
                 });
             Field<ListGraphType<ShardedShopStateV2Type>>(
-                name: "shardedShopFull",
+                name: "shardedShopAvatar",
                 description: "State for sharded shop.",
+                arguments: new QueryArguments(
+                    new QueryArgument<NonNullGraphType<ItemSubTypeEnumType>>
+                    {
+                        Name = "itemSubType",
+                        Description = "ItemSubType for shard. see from https://github.com/planetarium/lib9c/blob/main/Lib9c/Model/Item/ItemType.cs#L13"
+                    }),
                 resolve: context =>
                 {
+
                     List<ShardedShopStateV2> listofShop = new List<ShardedShopStateV2>();
-
-                    for(int type = 6; type < 11; type++)
+                    var subType = context.GetArgument<ItemSubType>("itemSubType");
+                    
+                    for(int nonceInt = 0;  nonceInt < 16; nonceInt++)
                     {
-                        ItemSubType itemtype = (ItemSubType)type;
-
-                        for (int nonceInt = 0; nonceInt < 16; nonceInt++)
+                        string nonce = nonceInt.ToString();
+                        if (context.Source.WorldState.GetLegacyState(ShardedShopStateV2.DeriveAddress(subType, nonce)) is { } state)
                         {
-                            string nonce = nonceInt.ToString();
-                            if (context.Source.WorldState.GetLegacyState(ShardedShopStateV2.DeriveAddress(itemtype, nonce)) is { } state)
-                            {
-                                var heh = new ShardedShopStateV2((Dictionary)state);
-                                listofShop.Add(heh);
-                            }
-                        }
-                        if (listofShop.Any())
-                        {
-                            return listofShop;
+                            var heh = new ShardedShopStateV2((Dictionary)state);
+                            listofShop.Add(heh);
                         }
                     }
-
+                    if (listofShop.Any())
+                    {
+                        return listofShop;
+                    }
                     return null;
                 });
             Field<WeeklyArenaStateType>(
