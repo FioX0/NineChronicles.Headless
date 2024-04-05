@@ -30,6 +30,9 @@ using NineChronicles.Headless.GraphTypes.States.Models.Item.Enum;
 using NineChronicles.Headless.GraphTypes.States.Models.Table;
 using Nekoyume.Model.Stat;
 using System.Collections.Immutable;
+using Nekoyume.Model.Market;
+using MagicOnion.Server.HttpGateway.Swagger.Schemas;
+using GraphQL.NewtonsoftJson;
 
 
 namespace NineChronicles.Headless.GraphTypes
@@ -141,33 +144,40 @@ namespace NineChronicles.Headless.GraphTypes
 
                     return null;
                 });
-            Field<ListGraphType<ShardedShopStateV2Type>>(
+            Field<ProductInfoStateType>(
                 name: "shardedShopAvatar",
                 description: "State for sharded shop.",
-                arguments: new QueryArguments(
-                    new QueryArgument<NonNullGraphType<ItemSubTypeEnumType>>
-                    {
-                        Name = "itemSubType",
-                        Description = "ItemSubType for shard. see from https://github.com/planetarium/lib9c/blob/main/Lib9c/Model/Item/ItemType.cs#L13"
-                    }),
+                arguments: new QueryArguments(new QueryArgument<NonNullGraphType<AddressType>>
+                {
+                    Name = "avatarAddress",
+                    Description = "Address of avatar."
+                },
+                new QueryArgument<NonNullGraphType<LongGraphType>>
+                {
+                    Name = "blockindex",
+                    Description = "blockindex of sale"
+                }),
                 resolve: context =>
                 {
+                    var avatarAddress = context.GetArgument<Address>("avatarAddress");
+                    var blockindex = context.GetArgument<long>("blockindex");
+                    var productsStateAddress = ProductsState.DeriveAddress(avatarAddress);
+                    var productsState = new ProductsState((List) context.Source.WorldState.GetLegacyState(productsStateAddress));
 
-                    List<ShardedShopStateV2> listofShop = new List<ShardedShopStateV2>();
-                    var subType = context.GetArgument<ItemSubType>("itemSubType");
-                    
-                    for(int nonceInt = 0;  nonceInt < 16; nonceInt++)
+
+
+                    foreach(var productentry in productsState.ProductIds)
                     {
-                        string nonce = nonceInt.ToString();
-                        if (context.Source.WorldState.GetLegacyState(ShardedShopStateV2.DeriveAddress(subType, nonce)) is { } state)
+                        var productAddress = Product.DeriveAddress(productentry);
+                        var product = ProductFactory.DeserializeProduct((List)context.Source.WorldState.GetLegacyState(productAddress));
+                        if(product.RegisteredBlockIndex == blockindex)
                         {
-                            var heh = new ShardedShopStateV2((Dictionary)state);
-                            listofShop.Add(heh);
+                            ProductInfoState ProductInfo = new ProductInfoState();
+                            ProductInfo.ProductId = product.ProductId;
+                            ProductInfo.RegisteredBlockIndex = product.RegisteredBlockIndex;
+
+                            return ProductInfo;
                         }
-                    }
-                    if (listofShop.Any())
-                    {
-                        return listofShop;
                     }
                     return null;
                 });

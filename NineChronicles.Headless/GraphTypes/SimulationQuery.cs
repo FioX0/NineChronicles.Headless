@@ -195,7 +195,7 @@ namespace NineChronicles.Headless.GraphTypes
                     int Wave2 = 0;
                     int Wave3 = 0;
 
-                    for (var i = 0; i < 50; i++)
+                    for (var i = 0; i < 1000; i++)
                     {
                         LocalRandom random = new LocalRandom(rnd.Next());
                         var simulator = new StageSimulator(
