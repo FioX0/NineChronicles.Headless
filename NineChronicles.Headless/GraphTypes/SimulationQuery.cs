@@ -195,7 +195,7 @@ namespace NineChronicles.Headless.GraphTypes
                     int Wave2 = 0;
                     int Wave3 = 0;
 
-                    for (var i = 0; i < 1000; i++)
+                    for (var i = 0; i < 500; i++)
                     {
                         LocalRandom random = new LocalRandom(rnd.Next());
                         var simulator = new StageSimulator(
@@ -242,10 +242,10 @@ namespace NineChronicles.Headless.GraphTypes
                     {
                         AvatarAddress = myAvatarAddress,
                         Stage = StageId,
-                        Wave0 = Math.Round(((double)Wave0 / 50) * 100, 2),
-                        Wave1 = Math.Round(((double)Wave1 / 50) * 100, 2),
-                        Wave2 = Math.Round(((double)Wave2 / 50) * 100, 2),
-                        Wave3 = Math.Round(((double)Wave3 / 50) * 100, 2)
+                        Wave0 = Math.Round(((double)Wave0 / 500) * 100, 2),
+                        Wave1 = Math.Round(((double)Wave1 / 500) * 100, 2),
+                        Wave2 = Math.Round(((double)Wave2 / 500) * 100, 2),
+                        Wave3 = Math.Round(((double)Wave3 / 500) * 100, 2)
                     };
                     return StageResult;
                 });
