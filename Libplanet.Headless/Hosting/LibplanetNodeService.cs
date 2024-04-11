@@ -647,12 +647,12 @@ namespace Libplanet.Headless.Hosting
             var hashed = url.GetHashCode().ToString();
             var logger = Log.ForContext("LibplanetNodeService", hashed);
             logger.Debug(path);
+            var extractPath = Path.Join(path, hashed);
             if(!Directory.Exists(Path.Join(path, hashed)))
             {
                 Directory.CreateDirectory(path);
                 using var httpClient = new HttpClient();
                 var downloadPath = Path.Join(path, hashed + ".zip");
-                var extractPath = Path.Join(path, hashed);
                 logger.Debug("Downloading...");
                 await File.WriteAllBytesAsync(
                     downloadPath,
