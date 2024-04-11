@@ -59,6 +59,11 @@ namespace NineChronicles.Headless.GraphTypes
                         Description = "list of food id.",
                         DefaultValue = new List<Guid>(),
                         Name = "foodIds",
+                    },
+                    new QueryArgument<NonNullGraphType<IntGraphType>>
+                    {
+                        Name = "simulationCount",
+                        Description = "Amount of simulations, between 1 and 1000"
                     }
                 ),
                 resolve: context =>
@@ -68,6 +73,8 @@ namespace NineChronicles.Headless.GraphTypes
                     int WorldId = context.GetArgument<int>("worldId");
                     var Foods = context.GetArgument<List<Guid>>("foodIds");
                     int? StageBuffId = 1;
+                    int simulationCount = context.GetArgument<int>("simulationCount");
+
                     //sheets
                     var sheets = context.Source.WorldState.GetSheets(
                         containQuestSheet: true,
@@ -195,7 +202,7 @@ namespace NineChronicles.Headless.GraphTypes
                     int Wave2 = 0;
                     int Wave3 = 0;
 
-                    for (var i = 0; i < 500; i++)
+                    for (var i = 0; i <= simulationCount; i++)
                     {
                         LocalRandom random = new LocalRandom(rnd.Next());
                         var simulator = new StageSimulator(
@@ -242,10 +249,10 @@ namespace NineChronicles.Headless.GraphTypes
                     {
                         AvatarAddress = myAvatarAddress,
                         Stage = StageId,
-                        Wave0 = Math.Round(((double)Wave0 / 500) * 100, 2),
-                        Wave1 = Math.Round(((double)Wave1 / 500) * 100, 2),
-                        Wave2 = Math.Round(((double)Wave2 / 500) * 100, 2),
-                        Wave3 = Math.Round(((double)Wave3 / 500) * 100, 2)
+                        Wave0 = Math.Round(((double)Wave0 / simulationCount) * 100, 2),
+                        Wave1 = Math.Round(((double)Wave1 / simulationCount) * 100, 2),
+                        Wave2 = Math.Round(((double)Wave2 / simulationCount) * 100, 2),
+                        Wave3 = Math.Round(((double)Wave3 / simulationCount) * 100, 2)
                     };
                     return StageResult;
                 });
