@@ -647,19 +647,26 @@ namespace Libplanet.Headless.Hosting
             var hashed = url.GetHashCode().ToString();
             var logger = Log.ForContext("LibplanetNodeService", hashed);
             logger.Debug(path);
-            Directory.CreateDirectory(path);
-            using var httpClient = new HttpClient();
-            var downloadPath = Path.Join(path, hashed + ".zip");
-            var extractPath = Path.Join(path, hashed);
-            logger.Debug("Downloading...");
-            await File.WriteAllBytesAsync(
-                downloadPath,
-                await httpClient.GetByteArrayAsync(url, SwarmCancellationToken),
-                SwarmCancellationToken);
-            logger.Debug("Finished downloading.");
-            logger.Debug("Extracting...");
-            ZipFile.ExtractToDirectory(downloadPath, extractPath);
-            logger.Debug("Finished extracting.");
+            if(!Directory.Exists(Path.Join(path, hashed)))
+            {
+                Directory.CreateDirectory(path);
+                using var httpClient = new HttpClient();
+                var downloadPath = Path.Join(path, hashed + ".zip");
+                var extractPath = Path.Join(path, hashed);
+                logger.Debug("Downloading...");
+                await File.WriteAllBytesAsync(
+                    downloadPath,
+                    await httpClient.GetByteArrayAsync(url, SwarmCancellationToken),
+                    SwarmCancellationToken);
+                logger.Debug("Finished downloading.");
+                logger.Debug("Extracting...");
+                ZipFile.ExtractToDirectory(downloadPath, extractPath);
+                logger.Debug("Finished extracting.");
+            }
+            else
+            {
+                logger.Debug("Path Already Exists");
+            }
             return Path.Combine(extractPath, "Lib9c.Plugin.dll");
         }
 
