@@ -648,7 +648,7 @@ namespace Libplanet.Headless.Hosting
             var logger = Log.ForContext("LibplanetNodeService", hashed);
             logger.Debug(path);
             var extractPath = Path.Join(path, hashed);
-            if(!Directory.Exists(path))
+            if(!Directory.Exists(Path.Join(path, hashed)))
             {
                 Directory.CreateDirectory(path);
                 using var httpClient = new HttpClient();
