@@ -287,6 +287,7 @@ namespace NineChronicles.Headless.GraphTypes
                         typeof(MaterialItemSheet),
                         typeof(RuneListSheet),
                         typeof(RuneLevelBonusSheet),
+                        typeof(CollectionSheet),
                         typeof(DeBuffLimitSheet),
                     });
 
