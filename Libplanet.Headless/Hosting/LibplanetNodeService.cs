@@ -655,7 +655,8 @@ namespace Libplanet.Headless.Hosting
             Directory.CreateDirectory(path);
             var hashed = CreateSha256Hash(url);
             var logger = Log.ForContext("LibplanetNodeService", hashed);
-            logger.Debug(path);
+            using var httpClient = new HttpClient();
+            var downloadPath = Path.Join(path, hashed + ".zip");
             var extractPath = Path.Join(path, hashed);
             var checksumPath = Path.Join(extractPath, "checksum.txt");
 

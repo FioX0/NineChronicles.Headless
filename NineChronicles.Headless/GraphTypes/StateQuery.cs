@@ -34,6 +34,8 @@ using System.Collections.Immutable;
 using Nekoyume.Model.Market;
 using MagicOnion.Server.HttpGateway.Swagger.Schemas;
 using GraphQL.NewtonsoftJson;
+using Nekoyume.TableData.Rune;
+using Nekoyume.Helper;
 
 
 namespace NineChronicles.Headless.GraphTypes
@@ -717,29 +719,27 @@ namespace NineChronicles.Headless.GraphTypes
                                 : new RuneSlotState(BattleType.Arena);
 
                             var runeListSheet = sheets.GetSheet<RuneListSheet>();
-                            var runeStates = new List<RuneState>();
-                            var runeSlotInfoList = runeSlotState.GetRuneSlot();
-                            foreach (var address in runeSlotInfoList.Where(info => info.RuneId.HasValue).Select(info => RuneState.DeriveAddress(participant, info.RuneId!.Value)))
+
+                            var runeStates = context.Source.WorldState.GetRuneState(participant, out _);
+
+
+                            var equippedRuneStates = new List<RuneState>();
+                            foreach (var runeId in runeSlotState.GetRuneSlot().Select(slot => slot.RuneId))
                             {
-                                if (context.Source.WorldState.TryGetLegacyState(address, out List rawRuneState))
+                                if (!runeId.HasValue)
                                 {
-                                    runeStates.Add(new RuneState(rawRuneState));
+                                    continue;
+                                }
+
+                                if (runeStates.TryGetRuneState(runeId.Value, out var runeState))
+                                {
+                                    equippedRuneStates.Add(runeState);
                                 }
                             }
+
                             var runeOptionSheet = sheets.GetSheet<RuneOptionSheet>();
-                            var runeOptions = new List<RuneOptionSheet.Row.RuneOptionInfo>();
-                            foreach (var runeState in runeStates)
-                            {
-                                if (!runeOptionSheet.TryGetValue(runeState.RuneId, out var optionRow))
-                                {
-                                    throw new SheetRowNotFoundException("RuneOptionSheet", runeState.RuneId);
-                                }
-                                if (!optionRow.LevelOptionMap.TryGetValue(runeState.Level, out var option))
-                                {
-                                    throw new SheetRowNotFoundException("RuneOptionSheet", runeState.Level);
-                                }
-                                runeOptions.Add(option);
-                            }
+                            var runeOptions = StateQuery.GetRuneOptions(equippedRuneStates, runeOptionSheet);
+
                             var avatarEquipments = avatar.inventory.Equipments;
                             var avatarCostumes = avatar.inventory.Costumes;
                             List<Equipment> arenaEquipementList = avatarEquipments.Where(f => arenaAvatarState.Equipments.Contains(f.ItemId)).Select(n => n).ToList();
@@ -774,7 +774,8 @@ namespace NineChronicles.Headless.GraphTypes
                                 avatar.level,
                                 characterRow, 
                                 costumeStatSheet,
-                                modifiers[participant]
+                                modifiers[participant],
+                                RuneHelper.CalculateRuneLevelBonus(runeStates, runeListSheet, context.Source.WorldState.GetSheet<RuneLevelBonusSheet>())
                             );
                             var arenaInfo = new ChampionArenaInfo
                             {

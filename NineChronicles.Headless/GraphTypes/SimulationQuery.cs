@@ -26,6 +26,7 @@ using Nekoyume.TableData.Pet;
 using Nekoyume.Helper;
 using Nekoyume.Model.Stat;
 using Nekoyume.Module;
+using Nekoyume.TableData.Rune;
 
 namespace NineChronicles.Headless.GraphTypes
 {
@@ -125,20 +126,13 @@ namespace NineChronicles.Headless.GraphTypes
                     List<Guid> myEquipementList = myAvatarEquipments.Where(f=>f.equipped).Select(n => n.ItemId).ToList();
                     List<Guid> myCostumeList = myAvatarCostumes.Where(f=>f.equipped).Select(n => n.ItemId).ToList();
 
-                    var myRuneSlotStateAddress = RuneSlotState.DeriveAddress(myAvatarAddress, BattleType.Adventure);
-                    var myRuneSlotState = context.Source.WorldState.TryGetLegacyState(myRuneSlotStateAddress, out List myRawRuneSlotState)
-                        ? new RuneSlotState(myRawRuneSlotState)
+                    var runeSlotStateAddress = RuneSlotState.DeriveAddress(myAvatarAddress, BattleType.Adventure);
+                    var runeSlotState = context.Source.WorldState.TryGetLegacyState(runeSlotStateAddress, out List rawRuneSlotState)
+                        ? new RuneSlotState(rawRuneSlotState)
                         : new RuneSlotState(BattleType.Adventure);
+                    var runeListSheet = sheets.GetSheet<RuneListSheet>();
 
-                    var myRuneStates = new List<RuneState>();
-                    var myRuneSlotInfos = myRuneSlotState.GetEquippedRuneSlotInfos();
-                    foreach (var address in myRuneSlotInfos.Select(info => RuneState.DeriveAddress(myAvatarAddress, info.RuneId)))
-                    {
-                        if (context.Source.WorldState.TryGetLegacyState(address, out List rawRuneState))
-                        {
-                            myRuneStates.Add(new RuneState(rawRuneState));
-                        }
-                    }
+                    var runeStates = context.Source.WorldState.GetRuneState(myAvatarAddress, out var migrateRequired);
 
                     //Crystal Buffs//
                     var skillStateAddress = Addresses.GetSkillStateAddressFromAvatarAddress(myAvatarAddress);
@@ -209,7 +203,8 @@ namespace NineChronicles.Headless.GraphTypes
                             random,
                             myAvatar,
                             i == 0 ? Foods : new List<Guid>(),
-                            myRuneStates,
+                            runeStates,
+                            runeSlotState,
                             i == 0 ? skillsOnWaveStart : new List<Skill>(),
                             WorldId,
                             StageId,
@@ -291,7 +286,7 @@ namespace NineChronicles.Headless.GraphTypes
                         typeof(EquipmentItemOptionSheet),
                         typeof(MaterialItemSheet),
                         typeof(RuneListSheet),
-                        typeof(CollectionSheet),
+                        typeof(RuneLevelBonusSheet),
                         typeof(DeBuffLimitSheet),
                     });
 
@@ -331,16 +326,7 @@ namespace NineChronicles.Headless.GraphTypes
                     var myRuneSlotState = context.Source.WorldState.TryGetLegacyState(myRuneSlotStateAddress, out List myRawRuneSlotState)
                         ? new RuneSlotState(myRawRuneSlotState)
                         : new RuneSlotState(BattleType.Arena);
-
-                    var myRuneStates = new List<RuneState>();
-                    var myRuneSlotInfos = myRuneSlotState.GetEquippedRuneSlotInfos();
-                    foreach (var address in myRuneSlotInfos.Select(info => RuneState.DeriveAddress(myAvatarAddress, info.RuneId)))
-                    {
-                        if (context.Source.WorldState.TryGetLegacyState(address, out List rawRuneState))
-                        {
-                            myRuneStates.Add(new RuneState(rawRuneState));
-                        }
-                    }
+                    var myRuneStates = context.Source.WorldState.GetRuneState(myAvatarAddress, out var migrateRequired);
 
                     //Enemy
                     var enemyArenaAvatarStateAdr = ArenaAvatarState.DeriveAddress(enemyAvatarAddress);
@@ -359,27 +345,23 @@ namespace NineChronicles.Headless.GraphTypes
                         ? new RuneSlotState(enemyRawRuneSlotState)
                         : new RuneSlotState(BattleType.Arena);
 
-                    var enemyRuneStates = new List<RuneState>();
-                    var enemyRuneSlotInfos = enemyRuneSlotState.GetEquippedRuneSlotInfos();
-                    foreach (var address in enemyRuneSlotInfos.Select(info => RuneState.DeriveAddress(enemyAvatarAddress, info.RuneId)))
-                    {
-                        if (context.Source.WorldState.TryGetLegacyState(address, out List rawRuneState))
-                        {
-                            enemyRuneStates.Add(new RuneState(rawRuneState));
-                        }
-                    }
+                    var enemyRuneStates = context.Source.WorldState.GetRuneState(enemyAvatarAddress, out _);
 
                     var myArenaPlayerDigest = new ArenaPlayerDigest(
                         myAvatar,
                         myArenaEquipementList,
                         myArenaCostumeList,
-                        myRuneStates);
+                        myRuneStates,
+                        myRuneSlotState
+                        );
 
                     var enemyArenaPlayerDigest = new ArenaPlayerDigest(
                         enemyAvatar,
                         enemyArenaEquipementList,
                         enemyArenaCostumeList,
-                        enemyRuneStates);
+                        enemyRuneStates,
+                        enemyRuneSlotState
+                        );
 
                     var collectionStates = context.Source.WorldState.GetCollectionStates(new[] { myAvatarAddress, enemyAvatarAddress });
                     var collectionExist = collectionStates.Count > 0;

@@ -123,7 +123,13 @@ namespace NineChronicles.Headless.GraphTypes
                         throw new InvalidOperationException("Store is not ready");
                     }
                     var transaction = store.GetTransaction(transactionId);
-                    var action = transaction.Actions?.Select(a => ToAction(a)).FirstOrDefault();
+
+                    if (transaction == null)
+                    {
+                        return null;
+                    }
+
+                    var action = transaction.Actions?.Select(a => ToAction(a)).FirstOrDefault(); // CS8602
                     if (action == null)
                     {
                         throw new InvalidOperationException("Action is null.");
@@ -229,16 +235,7 @@ namespace NineChronicles.Headless.GraphTypes
                     var myRuneSlotState = accountState.TryGetLegacyState(myRuneSlotStateAddress, out List myRawRuneSlotState)
                         ? new RuneSlotState(myRawRuneSlotState)
                         : new RuneSlotState(BattleType.Arena);
-
-                    var runeStates = new List<RuneState>();
-                    var RuneSlotInfos = myRuneSlotState.GetEquippedRuneSlotInfos();
-                    foreach (var address in RuneSlotInfos.Select(info => RuneState.DeriveAddress(myAvatarAddress, info.RuneId)))
-                    {
-                        if (accountState.TryGetLegacyState(address, out List rawRuneState))
-                        {
-                            runeStates.Add(new RuneState(rawRuneState));
-                        }
-                    }
+                    var myRuneStates = accountState.GetRuneState(myAvatarAddress, out var migrateRequired);
 
                     // simulate
                     // get enemy equipped items
@@ -253,15 +250,7 @@ namespace NineChronicles.Headless.GraphTypes
                         ? new RuneSlotState(enemyRawRuneSlotState)
                         : new RuneSlotState(BattleType.Arena);
 
-                    var enemyRuneStates = new List<RuneState>();
-                    var enemyRuneSlotInfos = enemyRuneSlotState.GetEquippedRuneSlotInfos();
-                    foreach (var address in enemyRuneSlotInfos.Select(info => RuneState.DeriveAddress(enemyAvatarAddress, info.RuneId)))
-                    {
-                        if (accountState.TryGetLegacyState(address, out List rawRuneState))
-                        {
-                            enemyRuneStates.Add(new RuneState(rawRuneState));
-                        }
-                    }
+                    var enemyRuneStates = accountState.GetRuneState(enemyAvatarAddress, out _);
 
                     var collectionStates = accountState.GetCollectionStates(new[] { myAvatarAddress, enemyAvatarAddress });
                     var collectionExist = collectionStates.Count > 0;
@@ -291,12 +280,16 @@ namespace NineChronicles.Headless.GraphTypes
                         AvatarState,
                         myItemSlotState.Equipments,
                         myItemSlotState.Costumes,
-                        runeStates);
+                        myRuneStates,
+                        myRuneSlotState
+                        );
                     ArenaPlayerDigest ExtraEnemyArenaPlayerDigest = new ArenaPlayerDigest(
                         enemyAvatarState,
                         enemyItemSlotState.Equipments,
                         enemyItemSlotState.Costumes,
-                        enemyRuneStates);
+                        enemyRuneStates,
+                        enemyRuneSlotState
+                        );
                     var arenaSheets = sheets.GetArenaSimulatorSheets();
                     var log = simulator.Simulate(ExtraMyArenaPlayerDigest, ExtraEnemyArenaPlayerDigest, arenaSheets, modifiers[myAvatarAddress], modifiers[enemyAvatarAddress], deBuffLimitSheet, true);
                     return log.Events;
