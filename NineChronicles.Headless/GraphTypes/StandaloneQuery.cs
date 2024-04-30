@@ -28,6 +28,7 @@ using Nekoyume.Model.Stat;
 using Nekoyume.Model.State;
 using Nekoyume.Module;
 using Nekoyume.TableData;
+using Nekoyume.TableData.Rune;
 using NineChronicles.Headless.GraphTypes.States;
 using static NineChronicles.Headless.NCActionUtils;
 using Transaction = Libplanet.Types.Tx.Transaction;
@@ -197,6 +198,7 @@ namespace NineChronicles.Headless.GraphTypes
                             typeof(EquipmentItemSubRecipeSheetV2),
                             typeof(EquipmentItemOptionSheet),
                             typeof(MaterialItemSheet),
+                            typeof(RuneListSheet),
                             typeof(CollectionSheet),
                             typeof(DeBuffLimitSheet),
                     });
