@@ -1173,6 +1173,16 @@ namespace NineChronicles.Headless.GraphTypes
                     {
                         Name = "enemyAvatarAddress",
                         Description = "Enemy Avatar address."
+                    },
+                    new QueryArgument<NonNullGraphType<IntGraphType>>
+                    {
+                        Name = "championshipId",
+                        Description = "championshipId"
+                    },
+                    new QueryArgument<NonNullGraphType<IntGraphType>>
+                    {
+                        Name = "weekId",
+                        Description = "weekId"
                     }
                 ),
                 resolve: context =>
@@ -1181,10 +1191,10 @@ namespace NineChronicles.Headless.GraphTypes
                     Address enemyAvatarAddress = context.GetArgument<Address>("enemyAvatarAddress");
                     List<Guid> costumeIds = context.GetArgument<List<Guid>>("costumeIds") ?? new List<Guid>();
                     List<Guid> equipmentIds = context.GetArgument<List<Guid>>("equipmentIds") ?? new List<Guid>();
+                    var championshipId = context.GetArgument<int>("championshipId");
+                    var weekId = context.GetArgument<int>("weekId");
                     
                     var blockIndex = context.Source.BlockIndex!.Value;
-
-                    var currentRoundData = context.Source.WorldState.GetSheet<ArenaSheet>().GetRoundByBlockIndex(blockIndex);
 
                     var myAvatar = context.Source.WorldState.GetAvatarState(myAvatarAddress);
                     var myArenaAvatarStateAdr = ArenaAvatarState.DeriveAddress(myAvatarAddress);
@@ -1217,10 +1227,10 @@ namespace NineChronicles.Headless.GraphTypes
                     {
                         myAvatarAddress = myAvatarAddress,
                         enemyAvatarAddress = enemyAvatarAddress,
-                        championshipId = currentRoundData.ChampionshipId,
+                        championshipId = championshipId,
                         costumes = myArenaCostumeList,
                         equipments = myArenaEquipementList,
-                        round = currentRoundData.Round,
+                        round = weekId,
                         ticket = 1,
                         runeInfos = myRuneSlotInfos
                     };
