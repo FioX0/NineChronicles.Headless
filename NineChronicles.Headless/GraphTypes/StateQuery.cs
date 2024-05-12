@@ -1259,10 +1259,16 @@ namespace NineChronicles.Headless.GraphTypes
                     var avatarAddress = context.GetArgument<Address>("avatarAddress");
                     var runeId = context.GetArgument<int>("runeId");
 
-                    var deriveAddress = RuneState.DeriveAddress(avatarAddress, runeId);
-                    if (context.Source.WorldState.TryGetLegacyState(deriveAddress, out List runes))
+                    var myRuneSlotStateAddress = RuneSlotState.DeriveAddress(avatarAddress, BattleType.Adventure);
+                    var myRuneSlotState = context.Source.WorldState.TryGetLegacyState(myRuneSlotStateAddress, out List myRawRuneSlotState)
+                        ? new RuneSlotState(myRawRuneSlotState)
+                        : new RuneSlotState(BattleType.Adventure);
+
+                    var runeStates = context.Source.WorldState.GetRuneState(avatarAddress, out var migrateRequired);
+
+                    if (runeStates.TryGetRuneState(runeId, out var runeState))
                     {
-                        return new RuneState(runes);
+                        return runeState;
                     }
 
                     return null;
