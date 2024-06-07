@@ -104,6 +104,7 @@ namespace NineChronicles.Headless.GraphTypes
                             typeof(CollectionSheet),
                             typeof(RuneLevelBonusSheet),
                             typeof(DeBuffLimitSheet),
+                            typeof(BuffLinkSheet),
                         });
 
                     var materialItemSheet = sheets.GetSheet<MaterialItemSheet>();
@@ -190,6 +191,7 @@ namespace NineChronicles.Headless.GraphTypes
 
                     var simulatorSheets = sheets.GetSimulatorSheets();
                     var deBuffLimitSheet = sheets.GetSheet<DeBuffLimitSheet>();
+                    var buffLinkSheet = sheets.GetSheet<BuffLinkSheet>();
                     var gameConfigState = context.Source.WorldState.GetGameConfigState();
 
                     int Wave0 = 0;
@@ -219,6 +221,8 @@ namespace NineChronicles.Headless.GraphTypes
                             StageSimulator.GetWaveRewards(random, stageRow, materialItemSheet),
                             modifiers[myAvatarAddress],
                             deBuffLimitSheet,
+                            buffLinkSheet,
+                            false,
                             shatterStrikeMaxDamage: gameConfigState.ShatterStrikeMaxDamage
                             );
 
@@ -290,6 +294,7 @@ namespace NineChronicles.Headless.GraphTypes
                         typeof(RuneLevelBonusSheet),
                         typeof(CollectionSheet),
                         typeof(DeBuffLimitSheet),
+                        typeof(BuffLinkSheet),
                     });
 
                     if(simulationCount < 1 || simulationCount > 1000)
@@ -397,6 +402,7 @@ namespace NineChronicles.Headless.GraphTypes
                     List<ArenaSimulationResult> arenaResultsList = new List<ArenaSimulationResult>();
                     ArenaSimulationState arenaSimulationState = new ArenaSimulationState();
                     arenaSimulationState.blockIndex = context.Source.BlockIndex;
+                    var buffLinkSheet = sheets.GetSheet<BuffLinkSheet>();
                     
                     for (var i = 0; i < simulationCount; i++)
                     {
@@ -411,7 +417,9 @@ namespace NineChronicles.Headless.GraphTypes
                             modifiers[myAvatarAddress],
                             modifiers[enemyAvatarAddress],
                             deBuffLimitSheet,
+                            buffLinkSheet,
                             true);
+                            
                         if(log.Result.ToString() == "Win")
                         {
                             arenaResult.win = true;
