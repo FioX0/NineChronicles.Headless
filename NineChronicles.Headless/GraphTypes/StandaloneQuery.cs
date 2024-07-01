@@ -289,7 +289,7 @@ namespace NineChronicles.Headless.GraphTypes
                     {
                         throw new InvalidOperationException("Previous BlockHash missing.");
                     }
-                    var accountState = chain.GetWorldState(previousHash);
+                    var accountState = chain.GetWorldState((BlockHash)previousHash);
 
                     var sheets = accountState.GetSheets(containArenaSimulatorSheets: true, sheetTypes: new[]
                     {
