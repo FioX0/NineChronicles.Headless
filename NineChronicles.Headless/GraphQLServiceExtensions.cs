@@ -86,7 +86,6 @@ namespace NineChronicles.Headless
             services.TryAddSingleton<HelperQuery>();
             services.TryAddSingleton<RawStateQuery>();
             services.TryAddSingleton<EvidenceQuery>();
-            services.TryAddSingleton<ExplorerMutation>();
             services.TryAddSingleton(_ => new StateQuery()
             {
                 Name = "LibplanetStateQuery",
