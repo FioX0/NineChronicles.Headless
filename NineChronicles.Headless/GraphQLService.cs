@@ -181,7 +181,23 @@ namespace NineChronicles.Headless
                     .AddDataLoader()
                     .AddGraphTypes(typeof(StandaloneSchema))
                     .AddLibplanetExplorer()
-                    .AddUserContextBuilder<UserContextBuilder>();
+                    .AddGraphQLAuthorization(
+                        options =>
+                        {
+                            options.AddPolicy(
+                                LocalPolicyKey,
+                                p =>
+                                    p.RequireClaim(
+                                        "role",
+                                        "Admin"));
+
+                            // FIXME: Use ConfigurationException after bumping to .NET 8 or later.
+                            options.AddPolicy(
+                                JwtPolicyKey,
+                                p =>
+                                    p.RequireClaim("iss",
+                                        jwtOptions["Issuer"] ?? throw new ArgumentException("jwtOptions[\"Issuer\"] is null.")));
+                        });
 
                 services.AddGraphTypes();
             }

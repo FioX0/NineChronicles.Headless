@@ -33,6 +33,7 @@ using NineChronicles.Headless.GraphTypes.States;
 using NineChronicles.Headless.GraphTypes.Diff;
 using System.Security.Cryptography;
 using System.Text;
+using Libplanet.Store.Trie;
 using static NineChronicles.Headless.NCActionUtils;
 using Transaction = Libplanet.Types.Tx.Transaction;
 
@@ -174,231 +175,84 @@ namespace NineChronicles.Headless.GraphTypes
                 }
             );
 
-            Field<NonNullGraphType<SimultionQuery>>(name: "simulationQuery", arguments: new QueryArguments(
-                new QueryArgument<ByteStringType>
-                {
-                    Name = "hash",
-                    Description = "Offset block hash for query.",
-                },
-                new QueryArgument<LongGraphType>
-                {
-                    Name = "index",
-                    Description = "Offset block index for query."
-                }),
+            Field<NonNullGraphType<ListGraphType<NonNullGraphType<StateDiffType>>>>(
+                name: "accountDiffs",
+                description: "This field allows you to query the diffs based accountAddress between two blocks." +
+                             " `baseIndex` is the reference block index, and changedIndex is the block index from which to check" +
+                             " what changes have occurred relative to `baseIndex`." +
+                             " Both indices must not be higher than the current block on the chain nor lower than the genesis block index (0)." +
+                             " The difference between the two blocks must be greater than zero for a valid comparison and less than ten for performance reasons.",
+                arguments: new QueryArguments(
+                    new QueryArgument<NonNullGraphType<LongGraphType>>
+                    {
+                        Name = "baseIndex",
+                        Description = "The index of the reference block from which the state is retrieved."
+                    },
+                    new QueryArgument<NonNullGraphType<LongGraphType>>
+                    {
+                        Name = "changedIndex",
+                        Description = "The index of the target block for comparison."
+                    },
+                    new QueryArgument<NonNullGraphType<AddressType>>
+                    {
+                        Name = "accountAddress",
+                        Description = "The target accountAddress."
+                    }
+                ),
                 resolve: context =>
                 {
-                    BlockHash blockHash = (context.GetArgument<byte[]?>("hash"), context.GetArgument<long?>("index")) switch
+                    if (!(standaloneContext.BlockChain is BlockChain blockChain))
                     {
-                        ({ } bytes, null) => new BlockHash(bytes),
-                        (null, { } index) => standaloneContext.BlockChain[index].Hash,
-                        (not null, not null) => throw new ArgumentException("Only one of 'hash' and 'index' must be given."),
-                        (null, null) => standaloneContext.BlockChain.Tip.Hash,
-                    };
-
-                    if (!(standaloneContext.BlockChain is { } chain))
-                    {
-                        return null;
+                        throw new ExecutionError(
+                            $"{nameof(StandaloneContext)}.{nameof(StandaloneContext.BlockChain)} was not set yet!"
+                        );
                     }
 
-                    return new StateContext(
-                        chain.GetWorldState(blockHash),
-                        chain[blockHash].Index,
-                        stateMemoryCache
+                    var baseIndex = context.GetArgument<long>("baseIndex");
+                    var changedIndex = context.GetArgument<long>("changedIndex");
+                    var accountAddress = context.GetArgument<Address>("accountAddress");
+
+                    var blockInterval = Math.Abs(changedIndex - baseIndex);
+                    if (blockInterval >= 30 || blockInterval == 0)
+                    {
+                        throw new ExecutionError(
+                            "Interval between baseIndex and changedIndex should not be greater than 30 or zero"
+                        );
+                    }
+
+                    var baseBlockStateRootHash = blockChain[baseIndex].StateRootHash.ToString();
+                    var changedBlockStateRootHash = blockChain[changedIndex].StateRootHash.ToString();
+
+                    var baseStateRootHash = HashDigest<SHA256>.FromString(baseBlockStateRootHash);
+                    var targetStateRootHash = HashDigest<SHA256>.FromString(
+                        changedBlockStateRootHash
                     );
-                }
-            );
 
-            Field<ListGraphType<Abstractions.ArenaEventBaseType>>(
-                "arenaBattleData",
-                description: "All of the information to playback an arena battle.",
-                arguments: new QueryArguments(new QueryArgument<NonNullGraphType<TxIdType>>
-                {
-                    Name = "transactionId",
-                    Description = "Transaction of the battle."
-                }),
-                resolve: context =>
-                {
-                    var transactionId = context.GetArgument<TxId>("transactionId");
+                    var stateStore = standaloneContext.StateStore;
+                    var baseTrieModel = stateStore.GetStateRoot(baseStateRootHash);
+                    var targetTrieModel = stateStore.GetStateRoot(targetStateRootHash);
 
-                    if (!(standaloneContext.Store is { } store))
+                    var accountKey = new KeyBytes(ByteUtil.Hex(accountAddress.ByteArray));
+
+                    Binary GetAccountState(ITrie model, KeyBytes key)
                     {
-                        throw new InvalidOperationException("Store is not ready");
-                    }
-                    var transaction = store.GetTransaction(transactionId);
-
-                    if (transaction == null)
-                    {
-                        return null;
+                        return model.Get(key) is Binary state ? state : throw new Exception($"Account state not found.");
                     }
 
-                    var action = transaction.Actions?.Select(a => ToAction(a)).FirstOrDefault(); // CS8602
-                    if (action == null)
-                    {
-                        throw new InvalidOperationException("Action is null.");
-                    }
-                    if (action.GetType() != typeof(BattleArena))
-                    {
-                        throw new InvalidOperationException("Wrong Transaction Type, please choose a BattleArena action");
-                    }
-                    var innerAction = action as BattleArena;
-                    if (innerAction == null)
-                    {
-                        throw new InvalidOperationException("Inner action is null");
-                    }
-                    var blockHash = store.GetFirstTxIdBlockHashIndex(transactionId);
+                    var baseAccountState = GetAccountState(baseTrieModel, accountKey);
+                    var targetAccountState = GetAccountState(targetTrieModel, accountKey);
 
-                    if (blockHash == null)
-                    {
-                        throw new InvalidOperationException("Block Hash is null");
-                    }
-                    var digest = store.GetBlockDigest(blockHash.Value);
-                    if (digest == null)
-                    {
-                        throw new InvalidOperationException("Block Digest is null.");
-                    }
-                    if (!(standaloneContext.BlockChain is { } chain))
-                    {
-                        return null;
-                    }
-                    var header = digest.Value.GetHeader();
-                    if (header == null)
-                    {
-                        throw new InvalidOperationException("Block Header is null.");
-                    }
-                    var preEvaluationHash = header.PreEvaluationHash;
-                    if (transaction.Signature == null)
-                    {
-                        throw new InvalidOperationException("Transaction Signature is null.");
-                    }
-                    byte[] hashedSignature;
-                    using (var hasher = System.Security.Cryptography.SHA1.Create())
-                    {
-                        hashedSignature = hasher.ComputeHash(transaction.Signature);
-                    }
-                    byte[] preEvaluationHashBytes = preEvaluationHash.ToByteArray();
-                    int seed =
-                    (preEvaluationHashBytes.Length > 0
-                        ? BitConverter.ToInt32(preEvaluationHashBytes, 0) : 0)
-                    ^ BitConverter.ToInt32(hashedSignature, 0);
+                    var baseSubTrieModel = stateStore.GetStateRoot(new HashDigest<SHA256>(baseAccountState));
+                    var targetSubTrieModel = stateStore.GetStateRoot(new HashDigest<SHA256>(targetAccountState));
 
-                    var random = new LocalRandom(seed);
-                    var simulator = new Nekoyume.Arena.ArenaSimulator(random, 5);
-
-                    var previousHash = header.PreviousHash;
-                    if (!(previousHash is BlockHash))
-                    {
-                        throw new InvalidOperationException("Previous BlockHash missing.");
-                    }
-                    var accountState = chain.GetWorldState((BlockHash)previousHash);
-
-                    var sheets = accountState.GetSheets(containArenaSimulatorSheets: true, sheetTypes: new[]
-                    {
-                            typeof(ArenaSheet),
-                            typeof(ItemRequirementSheet),
-                            typeof(EquipmentItemRecipeSheet),
-                            typeof(EquipmentItemSubRecipeSheetV2),
-                            typeof(EquipmentItemOptionSheet),
-                            typeof(MaterialItemSheet),
-                            typeof(RuneListSheet),
-                            typeof(CollectionSheet),
-                            typeof(DeBuffLimitSheet),
-                            typeof(RuneLevelBonusSheet),
-                            typeof(BuffLinkSheet),
-                    });
-
-
-                    var myAvatarAddress = innerAction.myAvatarAddress;
-
-                    var myArenaAvatarStateAdr = ArenaAvatarState.DeriveAddress(myAvatarAddress);
-                    var enemyAvatarAddress = innerAction.enemyAvatarAddress;
-
-                    var enemyArenaAvatarStateAdr = ArenaAvatarState.DeriveAddress(enemyAvatarAddress);
-
-                    if (!accountState.TryGetArenaAvatarState(myArenaAvatarStateAdr, out var myArenaAvatarState))
-                    {
-                        throw new ArenaAvatarStateNotFoundException(
-                            $"[{nameof(BattleArena)}] my avatar address : {myAvatarAddress}");
-                    }
-
-                    if (!accountState.TryGetArenaAvatarState(enemyArenaAvatarStateAdr, out var enemyArenaAvatarState))
-                    {
-                        throw new ArenaAvatarStateNotFoundException(
-                            $"[{nameof(BattleArena)}] my avatar address : {enemyAvatarAddress}");
-                    }
-
-                    // update arena avatar state
-                    myArenaAvatarState.UpdateEquipment(innerAction.equipments);
-                    myArenaAvatarState.UpdateCostumes(innerAction.costumes);
-
-                    var ItemSlotStateAddress = ItemSlotState.DeriveAddress(myAvatarAddress, BattleType.Arena);
-                    var myItemSlotState = accountState.TryGetLegacyState(ItemSlotStateAddress, out List rawItemSlotState)
-                        ? new ItemSlotState(rawItemSlotState)
-                        : new ItemSlotState(BattleType.Arena);
-
-                    var AvatarState = accountState.GetAvatarState(myAvatarAddress);
-                    var myRuneSlotStateAddress = RuneSlotState.DeriveAddress(myAvatarAddress, BattleType.Arena);
-                    var myRuneSlotState = accountState.TryGetLegacyState(myRuneSlotStateAddress, out List myRawRuneSlotState)
-                        ? new RuneSlotState(myRawRuneSlotState)
-                        : new RuneSlotState(BattleType.Arena);
-                    var myRuneStates = accountState.GetRuneState(myAvatarAddress, out var migrateRequired);
-
-                    // simulate
-                    // get enemy equipped items
-                    var enemyItemSlotStateAddress = ItemSlotState.DeriveAddress(enemyAvatarAddress, BattleType.Arena);
-                    var enemyItemSlotState = accountState.TryGetLegacyState(enemyItemSlotStateAddress, out List rawEnemyItemSlotState)
-                        ? new ItemSlotState(rawEnemyItemSlotState)
-                        : new ItemSlotState(BattleType.Arena);
-
-                    var enemyAvatarState = accountState.GetEnemyAvatarState(enemyAvatarAddress);
-                    var enemyRuneSlotStateAddress = RuneSlotState.DeriveAddress(enemyAvatarAddress, BattleType.Arena);
-                    var enemyRuneSlotState = accountState.TryGetLegacyState(enemyRuneSlotStateAddress, out List enemyRawRuneSlotState)
-                        ? new RuneSlotState(enemyRawRuneSlotState)
-                        : new RuneSlotState(BattleType.Arena);
-
-                    var enemyRuneStates = accountState.GetRuneState(enemyAvatarAddress, out _);
-
-                    var collectionStates = accountState.GetCollectionStates(new[] { myAvatarAddress, enemyAvatarAddress });
-                    var collectionExist = collectionStates.Count > 0;
-
-                    var modifiers = new Dictionary<Address, List<StatModifier>>
-                    {
-                        [myAvatarAddress] = new(),
-                        [enemyAvatarAddress] = new(),
-                    };
-                    if (collectionExist)
-                    {
-                        var collectionSheet = sheets.GetSheet<CollectionSheet>();
-                        #pragma warning disable LAA1002
-                        foreach (var (address, state) in collectionStates)
-                        #pragma warning restore LAA1002
-                        {
-                            var modifier = modifiers[address];
-                            foreach (var collectionId in state.Ids)
-                            {
-                                modifier.AddRange(collectionSheet[collectionId].StatModifiers);
-                            }
-                        }
-                    }
-                    var deBuffLimitSheet = sheets.GetSheet<DeBuffLimitSheet>();
-
-                    ArenaPlayerDigest ExtraMyArenaPlayerDigest = new ArenaPlayerDigest(
-                        AvatarState,
-                        myItemSlotState.Equipments,
-                        myItemSlotState.Costumes,
-                        myRuneStates,
-                        myRuneSlotState
-                        );
-                    ArenaPlayerDigest ExtraEnemyArenaPlayerDigest = new ArenaPlayerDigest(
-                        enemyAvatarState,
-                        enemyItemSlotState.Equipments,
-                        enemyItemSlotState.Costumes,
-                        enemyRuneStates,
-                        enemyRuneSlotState
-                        );
-                    var arenaSheets = sheets.GetArenaSimulatorSheets();
-                    var buffLinkSheet = sheets.GetSheet<BuffLinkSheet>();
-                    var log = simulator.Simulate(ExtraMyArenaPlayerDigest, ExtraEnemyArenaPlayerDigest, arenaSheets, modifiers[myAvatarAddress], modifiers[enemyAvatarAddress], deBuffLimitSheet, buffLinkSheet, true);
-                    return log.Events;
+                    var subDiff = baseSubTrieModel
+                        .Diff(targetSubTrieModel)
+                        .Select(diff => new StateDiffType.Value(
+                            Encoding.Default.GetString(diff.Path.ByteArray.ToArray()),
+                            diff.SourceValue,
+                            diff.TargetValue))
+                        .ToArray();
+                    return subDiff;
                 }
             );
 
@@ -817,6 +671,234 @@ namespace NineChronicles.Headless.GraphTypes
                 name: "addressQuery",
                 description: "Query to get derived address.",
                 resolve: context => new AddressQuery(standaloneContext));
+
+            Field<NonNullGraphType<SimultionQuery>>(name: "simulationQuery", arguments: new QueryArguments(
+                new QueryArgument<ByteStringType>
+                {
+                    Name = "hash",
+                    Description = "Offset block hash for query.",
+                },
+                new QueryArgument<LongGraphType>
+                {
+                    Name = "index",
+                    Description = "Offset block index for query."
+                }),
+                resolve: context =>
+                {
+                    BlockHash blockHash = (context.GetArgument<byte[]?>("hash"), context.GetArgument<long?>("index")) switch
+                    {
+                        ({ } bytes, null) => new BlockHash(bytes),
+                        (null, { } index) => standaloneContext.BlockChain[index].Hash,
+                        (not null, not null) => throw new ArgumentException("Only one of 'hash' and 'index' must be given."),
+                        (null, null) => standaloneContext.BlockChain.Tip.Hash,
+                    };
+
+                    if (!(standaloneContext.BlockChain is { } chain))
+                    {
+                        return null;
+                    }
+
+                    return new StateContext(
+                        chain.GetWorldState(blockHash),
+                        chain[blockHash].Index,
+                        stateMemoryCache
+                    );
+                }
+            );
+
+            Field<ListGraphType<Abstractions.ArenaEventBaseType>>(
+                "arenaBattleData",
+                description: "All of the information to playback an arena battle.",
+                arguments: new QueryArguments(new QueryArgument<NonNullGraphType<TxIdType>>
+                {
+                    Name = "transactionId",
+                    Description = "Transaction of the battle."
+                }),
+                resolve: context =>
+                {
+                    var transactionId = context.GetArgument<TxId>("transactionId");
+
+                    if (!(standaloneContext.Store is { } store))
+                    {
+                        throw new InvalidOperationException("Store is not ready");
+                    }
+                    var transaction = store.GetTransaction(transactionId);
+
+                    if (transaction == null)
+                    {
+                        return null;
+                    }
+
+                    var action = transaction.Actions?.Select(a => ToAction(a)).FirstOrDefault(); // CS8602
+                    if (action == null)
+                    {
+                        throw new InvalidOperationException("Action is null.");
+                    }
+                    if (action.GetType() != typeof(BattleArena))
+                    {
+                        throw new InvalidOperationException("Wrong Transaction Type, please choose a BattleArena action");
+                    }
+                    var innerAction = action as BattleArena;
+                    if (innerAction == null)
+                    {
+                        throw new InvalidOperationException("Inner action is null");
+                    }
+                    var blockHash = store.GetFirstTxIdBlockHashIndex(transactionId);
+
+                    if (blockHash == null)
+                    {
+                        throw new InvalidOperationException("Block Hash is null");
+                    }
+                    var digest = store.GetBlockDigest(blockHash.Value);
+                    if (digest == null)
+                    {
+                        throw new InvalidOperationException("Block Digest is null.");
+                    }
+                    if (!(standaloneContext.BlockChain is { } chain))
+                    {
+                        return null;
+                    }
+                    var header = digest.Value.GetHeader();
+                    if (header == null)
+                    {
+                        throw new InvalidOperationException("Block Header is null.");
+                    }
+                    var preEvaluationHash = header.PreEvaluationHash;
+                    if (transaction.Signature == null)
+                    {
+                        throw new InvalidOperationException("Transaction Signature is null.");
+                    }
+                    byte[] hashedSignature;
+                    using (var hasher = System.Security.Cryptography.SHA1.Create())
+                    {
+                        hashedSignature = hasher.ComputeHash(transaction.Signature);
+                    }
+                    byte[] preEvaluationHashBytes = preEvaluationHash.ToByteArray();
+                    int seed =
+                    (preEvaluationHashBytes.Length > 0
+                        ? BitConverter.ToInt32(preEvaluationHashBytes, 0) : 0)
+                    ^ BitConverter.ToInt32(hashedSignature, 0);
+
+                    var random = new LocalRandom(seed);
+                    var simulator = new Nekoyume.Arena.ArenaSimulator(random, 5);
+
+                    var previousHash = header.PreviousHash;
+                    if (!(previousHash is BlockHash))
+                    {
+                        throw new InvalidOperationException("Previous BlockHash missing.");
+                    }
+                    var accountState = chain.GetWorldState((BlockHash)previousHash);
+
+                    var sheets = accountState.GetSheets(containArenaSimulatorSheets: true, sheetTypes: new[]
+                    {
+                            typeof(ArenaSheet),
+                            typeof(ItemRequirementSheet),
+                            typeof(EquipmentItemRecipeSheet),
+                            typeof(EquipmentItemSubRecipeSheetV2),
+                            typeof(EquipmentItemOptionSheet),
+                            typeof(MaterialItemSheet),
+                            typeof(RuneListSheet),
+                            typeof(CollectionSheet),
+                            typeof(DeBuffLimitSheet),
+                            typeof(RuneLevelBonusSheet),
+                            typeof(BuffLinkSheet),
+                    });
+
+
+                    var myAvatarAddress = innerAction.myAvatarAddress;
+
+                    var myArenaAvatarStateAdr = ArenaAvatarState.DeriveAddress(myAvatarAddress);
+                    var enemyAvatarAddress = innerAction.enemyAvatarAddress;
+
+                    var enemyArenaAvatarStateAdr = ArenaAvatarState.DeriveAddress(enemyAvatarAddress);
+
+                    if (!accountState.TryGetArenaAvatarState(myArenaAvatarStateAdr, out var myArenaAvatarState))
+                    {
+                        throw new ArenaAvatarStateNotFoundException(
+                            $"[{nameof(BattleArena)}] my avatar address : {myAvatarAddress}");
+                    }
+
+                    if (!accountState.TryGetArenaAvatarState(enemyArenaAvatarStateAdr, out var enemyArenaAvatarState))
+                    {
+                        throw new ArenaAvatarStateNotFoundException(
+                            $"[{nameof(BattleArena)}] my avatar address : {enemyAvatarAddress}");
+                    }
+
+                    // update arena avatar state
+                    myArenaAvatarState.UpdateEquipment(innerAction.equipments);
+                    myArenaAvatarState.UpdateCostumes(innerAction.costumes);
+
+                    var ItemSlotStateAddress = ItemSlotState.DeriveAddress(myAvatarAddress, BattleType.Arena);
+                    var myItemSlotState = accountState.TryGetLegacyState(ItemSlotStateAddress, out List rawItemSlotState)
+                        ? new ItemSlotState(rawItemSlotState)
+                        : new ItemSlotState(BattleType.Arena);
+
+                    var AvatarState = accountState.GetAvatarState(myAvatarAddress);
+                    var myRuneSlotStateAddress = RuneSlotState.DeriveAddress(myAvatarAddress, BattleType.Arena);
+                    var myRuneSlotState = accountState.TryGetLegacyState(myRuneSlotStateAddress, out List myRawRuneSlotState)
+                        ? new RuneSlotState(myRawRuneSlotState)
+                        : new RuneSlotState(BattleType.Arena);
+                    var myRuneStates = accountState.GetRuneState(myAvatarAddress, out var migrateRequired);
+
+                    // simulate
+                    // get enemy equipped items
+                    var enemyItemSlotStateAddress = ItemSlotState.DeriveAddress(enemyAvatarAddress, BattleType.Arena);
+                    var enemyItemSlotState = accountState.TryGetLegacyState(enemyItemSlotStateAddress, out List rawEnemyItemSlotState)
+                        ? new ItemSlotState(rawEnemyItemSlotState)
+                        : new ItemSlotState(BattleType.Arena);
+
+                    var enemyAvatarState = accountState.GetEnemyAvatarState(enemyAvatarAddress);
+                    var enemyRuneSlotStateAddress = RuneSlotState.DeriveAddress(enemyAvatarAddress, BattleType.Arena);
+                    var enemyRuneSlotState = accountState.TryGetLegacyState(enemyRuneSlotStateAddress, out List enemyRawRuneSlotState)
+                        ? new RuneSlotState(enemyRawRuneSlotState)
+                        : new RuneSlotState(BattleType.Arena);
+
+                    var enemyRuneStates = accountState.GetRuneState(enemyAvatarAddress, out _);
+
+                    var collectionStates = accountState.GetCollectionStates(new[] { myAvatarAddress, enemyAvatarAddress });
+                    var collectionExist = collectionStates.Count > 0;
+
+                    var modifiers = new Dictionary<Address, List<StatModifier>>
+                    {
+                        [myAvatarAddress] = new(),
+                        [enemyAvatarAddress] = new(),
+                    };
+                    if (collectionExist)
+                    {
+                        var collectionSheet = sheets.GetSheet<CollectionSheet>();
+                        #pragma warning disable LAA1002
+                        foreach (var (address, state) in collectionStates)
+                        #pragma warning restore LAA1002
+                        {
+                            var modifier = modifiers[address];
+                            foreach (var collectionId in state.Ids)
+                            {
+                                modifier.AddRange(collectionSheet[collectionId].StatModifiers);
+                            }
+                        }
+                    }
+                    var deBuffLimitSheet = sheets.GetSheet<DeBuffLimitSheet>();
+
+                    ArenaPlayerDigest ExtraMyArenaPlayerDigest = new ArenaPlayerDigest(
+                        AvatarState,
+                        myItemSlotState.Equipments,
+                        myItemSlotState.Costumes,
+                        myRuneStates,
+                        myRuneSlotState
+                        );
+                    ArenaPlayerDigest ExtraEnemyArenaPlayerDigest = new ArenaPlayerDigest(
+                        enemyAvatarState,
+                        enemyItemSlotState.Equipments,
+                        enemyItemSlotState.Costumes,
+                        enemyRuneStates,
+                        enemyRuneSlotState
+                        );
+                    var arenaSheets = sheets.GetArenaSimulatorSheets();
+                    var buffLinkSheet = sheets.GetSheet<BuffLinkSheet>();
+                    var log = simulator.Simulate(ExtraMyArenaPlayerDigest, ExtraEnemyArenaPlayerDigest, arenaSheets, modifiers[myAvatarAddress], modifiers[enemyAvatarAddress], deBuffLimitSheet, buffLinkSheet, true);
+                    return log.Events;
+                }
+            );
         }
     }
 }
