@@ -624,23 +624,48 @@ namespace NineChronicles.Headless.GraphTypes
                     {
                         Name = "itemId",
                         Description = "GUID in string of item"
+                    },
+                    new QueryArgument<NonNullGraphType<IntGraphType>>
+                    {
+                        Name = "chain",
+                        Description = "chain of register",
+                        DefaultValue = 0
                     }),
                 resolve: context =>
                 {
                     var avatarAddress = context.GetArgument<Address>("avatarAddress");
                     var itemId = context.GetArgument<string>("itemId");
                     var price = context.GetArgument<int>("price");
-
+                    var chain = context.GetArgument<int>("chain");
+                    Currency NCG =  new Currency();
                     RegisterInfo RegisterInfos = new RegisterInfo();
                     RegisterInfos.AvatarAddress = avatarAddress;
+
+                    if(chain == 0)
+                    {
 #pragma warning disable CS0618 // Type or member is obsolete
-                    Currency NCG =
-                    Currency.Legacy(
-                        "NCG",
-                        2,
-                        ImmutableHashSet.Create(new Address("0x47D082a115c63E7b58B1532d20E631538eaFADde"))
-                    );
+                        Currency NCGTemp =
+                        Currency.Legacy(
+                            "NCG",
+                            2,
+                            ImmutableHashSet.Create(new Address("0x47D082a115c63E7b58B1532d20E631538eaFADde"))
+                        );
+                        NCG = NCGTemp;
 #pragma warning restore CS0618 // Type or member is obsolete
+                    }
+                    else if (chain == 1)
+                    {
+#pragma warning disable CS0618 // Type or member is obsolete
+                        Currency NCGTemp =
+                        Currency.Legacy(
+                            "NCG",
+                            2,
+                            ImmutableHashSet.Create(new Address())
+                        );
+                        NCG = NCGTemp;
+#pragma warning restore CS0618 // Type or member is obsolete
+                    }
+
                     RegisterInfos.Price = FungibleAssetValue.Parse(NCG, price.ToString());
                     RegisterInfos.Type = Nekoyume.Model.Market.ProductType.NonFungible;
                     RegisterInfos.TradableId = Guid.Parse(itemId);
