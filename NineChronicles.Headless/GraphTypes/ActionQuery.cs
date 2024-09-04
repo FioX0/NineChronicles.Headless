@@ -656,12 +656,7 @@ namespace NineChronicles.Headless.GraphTypes
                     else if (chain == 1)
                     {
 #pragma warning disable CS0618 // Type or member is obsolete
-                        Currency NCGTemp =
-                        Currency.Legacy(
-                            "NCG",
-                            2,
-                            ImmutableHashSet.Create(new Address())
-                        );
+                        Currency NCGTemp = Currency.Legacy("NCG", 2, null);
                         NCG = NCGTemp;
 #pragma warning restore CS0618 // Type or member is obsolete
                     }
@@ -756,12 +751,7 @@ namespace NineChronicles.Headless.GraphTypes
                     else if (chain == 1)
                     {
 #pragma warning disable CS0618 // Type or member is obsolete
-                        Currency NCGTemp =
-                        Currency.Legacy(
-                            "NCG",
-                            2,
-                            ImmutableHashSet.Create(new Address())
-                        );
+                        Currency NCGTemp = Currency.Legacy("NCG", 2, null);
                         NCG = NCGTemp;
 #pragma warning restore CS0618 // Type or member is obsolete
                     }
