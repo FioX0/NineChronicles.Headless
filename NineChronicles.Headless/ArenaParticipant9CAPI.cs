@@ -3,7 +3,7 @@ using Nekoyume.Model.State;
 
 namespace NineChronicles.Headless;
 
-public class ArenaParticipant
+public class ArenaParticipant9CAPI
 {
     public readonly Address AvatarAddr;
     public readonly int Score;
@@ -12,10 +12,10 @@ public class ArenaParticipant
     public int LoseScore;
     public readonly int Cp;
     public readonly int PortraitId;
-    public readonly string NameWithHash;
+    public readonly string Name;
     public readonly int Level;
 
-    public ArenaParticipant(
+    public ArenaParticipant9CAPI(
         Address avatarAddr,
         int score,
         int rank,
@@ -32,7 +32,7 @@ public class ArenaParticipant
         LoseScore = loseScore;
         Cp = cp;
         PortraitId = portraitId;
-        NameWithHash = avatarState.NameWithHash;
+        Name = avatarState.name;
         Level = avatarState.level;
     }
 }

@@ -1350,6 +1350,57 @@ namespace NineChronicles.Headless.GraphTypes
                 }
             );
 
+            Field<NonNullGraphType<ListGraphType<ArenaParticipantType9CAPI>>>(
+                "arenaParticipants9capi",
+                arguments: new QueryArguments(
+                    new QueryArgument<NonNullGraphType<AddressType>>
+                    {
+                        Name = "avatarAddress"
+                    },
+                    new QueryArgument<NonNullGraphType<BooleanGraphType>>
+                    {
+                        Name = "filterBounds",
+                        DefaultValue = true,
+                    }
+                ),
+                resolve: context =>
+                {
+                    // Copy from NineChronicles RxProps.Arena
+                    // https://github.com/planetarium/NineChronicles/blob/80.0.1/nekoyume/Assets/_Scripts/State/RxProps.Arena.cs#L279
+                    var blockIndex = context.Source.BlockIndex!.Value;
+                    var currentAvatarAddr = context.GetArgument<Address>("avatarAddress");
+                    var filterBounds = context.GetArgument<bool>("filterBounds");
+                    var currentRoundData = context.Source.WorldState.GetSheet<ArenaSheet>().GetRoundByBlockIndex(blockIndex);
+                    int playerScore = ArenaScore.ArenaScoreDefault;
+                    var cacheKey = $"{currentRoundData.ChampionshipId}_{currentRoundData.Round}";
+                    List<ArenaParticipant9CAPI> result = new();
+                    var scoreAddr = ArenaScore.DeriveAddress(currentAvatarAddr, currentRoundData.ChampionshipId, currentRoundData.Round);
+                    var scoreState = context.Source.WorldState.GetLegacyState(scoreAddr);
+                    if (scoreState is List scores)
+                    {
+                        playerScore = (Integer)scores[1];
+                    }
+                    if (context.Source.StateMemoryCache.ArenaParticipantsCache.TryGetValue(cacheKey,
+                            out var cachedResult))
+                    {
+                        result = (cachedResult as List<ArenaParticipant9CAPI>)!;
+                        foreach (var arenaParticipant in result)
+                        {
+                            var (win, lose, _) = ArenaHelper.GetScores(playerScore, arenaParticipant.Score);
+                            arenaParticipant.WinScore = win;
+                            arenaParticipant.LoseScore = lose;
+                        }
+                    }
+
+                    if (filterBounds)
+                    {
+                        result = GetBoundsWithPlayerScore9CAPI(result, currentRoundData.ArenaType, playerScore);
+                    }
+
+                    return result;
+                }
+            );
+
             Field<StringGraphType>(
                 name: "cachedSheet",
                 arguments: new QueryArguments(
@@ -1392,6 +1443,21 @@ namespace NineChronicles.Headless.GraphTypes
 
         public static List<ArenaParticipant> GetBoundsWithPlayerScore(
             List<ArenaParticipant> arenaInformation,
+            ArenaType arenaType,
+            int playerScore)
+        {
+            var bounds = ArenaHelper.ScoreLimits.ContainsKey(arenaType)
+                ? ArenaHelper.ScoreLimits[arenaType]
+                : ArenaHelper.ScoreLimits.First().Value;
+
+            bounds = (bounds.upper + playerScore, bounds.lower + playerScore);
+            return arenaInformation
+                .Where(a => a.Score <= bounds.upper && a.Score >= bounds.lower)
+                .ToList();
+        }
+
+        public static List<ArenaParticipant9CAPI> GetBoundsWithPlayerScore9CAPI(
+            List<ArenaParticipant9CAPI> arenaInformation,
             ArenaType arenaType,
             int playerScore)
         {
