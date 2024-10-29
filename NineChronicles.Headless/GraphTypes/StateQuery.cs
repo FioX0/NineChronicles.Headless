@@ -627,6 +627,52 @@ namespace NineChronicles.Headless.GraphTypes
                     return null;
                 }
             );
+            Field<ListGraphType<CombinationSlotStateTypeExtended>>(
+                "CombinationSlotNEW",
+                description: "Allows you to pull data ",
+                arguments: new QueryArguments(
+                    new QueryArgument<NonNullGraphType<AddressType>>
+                    {
+                        Name = "avatarAddress",
+                        Description = "Address of avatar."
+                    }
+                ),
+                resolve: context =>
+                {
+                    try
+                    {
+                        var avatarAddress = context.GetArgument<Address>("avatarAddress");
+                        List<CombinationSlotStateExtended> combinationSlotDataList = new List<CombinationSlotStateExtended>();
+                        for(int slotIndex = 0; slotIndex < 4; slotIndex++)
+                        {
+                            var deriveAddress = CombinationSlotState.DeriveAddress(avatarAddress, slotIndex);
+                            if (context.Source.WorldState.GetLegacyState(deriveAddress) is Dictionary state)
+                            {
+                                CombinationSlotStateExtended combinationSlotData = new CombinationSlotStateExtended();
+
+                                var newCombSlotState = new CombinationSlotState(state);
+                                var states = newCombSlotState.Result;
+                                if(states is not null && newCombSlotState.WorkCompleteBlockIndex > context.Source.BlockIndex)
+                                {
+                                    combinationSlotData.SlotIndex = slotIndex;
+                                    combinationSlotData.ItemGUID = states.itemUsable.ItemId;
+                                    combinationSlotData.Stars = states.itemUsable.GetOptionCount();
+                                    combinationSlotData.Spell = states.itemUsable.Skills.Count();
+                                    combinationSlotData.UnlockBlockIndex = newCombSlotState.WorkCompleteBlockIndex;
+                                    combinationSlotDataList.Add(combinationSlotData);
+                                }
+                            }     
+                        }
+                        return combinationSlotDataList;
+                    }
+                    catch(Exception ex)
+                    {
+                        Console.WriteLine(ex.Message);
+                        Console.WriteLine(ex.StackTrace);
+                        return null;
+                    }
+                }
+            );
             Field<ChampionshipArenaStateType>(
                 name: "championshipArena",
                 description: "State for championShip arena.",
