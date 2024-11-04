@@ -215,6 +215,10 @@ namespace NineChronicles.Headless.Executable
             [Option("config", new[] { 'C' },
                 Description = "Absolute path of \"appsettings.json\" file to provide headless configurations.")]
             string? configPath = "appsettings.json",
+            [Option(Description = "arena participants list sync interval time")]
+            int? arenaParticipantsSyncInterval = null,
+            [Option(Description = "arena participants list sync enable")]
+            bool arenaParticipantsSync = true,
             [Option(Description = "[DANGER] Turn on RemoteKeyValueService to debug.")]
             bool remoteKeyValueService = false,
             [Ignore] CancellationToken? cancellationToken = null
@@ -299,7 +303,7 @@ namespace NineChronicles.Headless.Executable
                 txLifeTime, messageTimeout, tipTimeout, demandBuffer, skipPreload,
                 minimumBroadcastTarget, bucketSize, chainTipStaleBehaviorType, txQuotaPerSigner, maximumPollPeers,
                 consensusPort, consensusPrivateKeyString, consensusSeedStrings, consensusTargetBlockIntervalMilliseconds, consensusProposeSecondBase,
-                maxTransactionPerBlock, remoteKeyValueService
+                maxTransactionPerBlock, arenaParticipantsSyncInterval, remoteKeyValueService
             );
 
             // Clean-up previous temporary log files.
@@ -471,7 +475,11 @@ namespace NineChronicles.Headless.Executable
                                     opt.Endpoint = new Uri(otlpEndpoint, UriKind.Absolute);
                                 })
                         );
-
+                    // worker
+                    if (arenaParticipantsSync)
+                    {
+                        services.AddHostedService(_ => new ArenaParticipantsWorker(arenaMemoryCache, standaloneContext, headlessConfig.ArenaParticipantsSyncInterval));
+                    }
                     services.AddSingleton(arenaMemoryCache);
                 });
 

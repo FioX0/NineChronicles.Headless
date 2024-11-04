@@ -93,6 +93,8 @@ namespace NineChronicles.Headless.Executable
 
         public AccessControlServiceOptions? AccessControlService { get; set; }
 
+        public int ArenaParticipantsSyncInterval { get; set; } = 1000;
+
         public void Overwrite(
             string? appProtocolVersionString,
             string[]? trustedAppProtocolVersionSignerStrings,
@@ -141,6 +143,7 @@ namespace NineChronicles.Headless.Executable
             double? consensusTargetBlockIntervalMilliseconds,
             int? consensusProposeSecondBase,
             int? maxTransactionPerBlock,
+            int? arenaParticipantsSyncInterval,
             bool? remoteKeyValueService
         )
         {
@@ -192,7 +195,9 @@ namespace NineChronicles.Headless.Executable
             ConsensusTargetBlockIntervalMilliseconds = consensusTargetBlockIntervalMilliseconds ?? ConsensusTargetBlockIntervalMilliseconds;
             ConsensusProposeSecondBase = consensusProposeSecondBase ?? ConsensusProposeSecondBase;
             MaxTransactionPerBlock = maxTransactionPerBlock ?? MaxTransactionPerBlock;
+            ArenaParticipantsSyncInterval = arenaParticipantsSyncInterval ?? ArenaParticipantsSyncInterval;
             RemoteKeyValueService = remoteKeyValueService ?? RemoteKeyValueService;
         }
     }
 }
+
