@@ -10,9 +10,10 @@ public class ArenaParticipant9CAPI
     public readonly int Rank;
     public int WinScore;
     public int LoseScore;
+    public int Ticket;
     public readonly int Cp;
     public readonly int PortraitId;
-    public readonly string Name;
+    public readonly string NameWithHash;
     public readonly int Level;
 
     public ArenaParticipant9CAPI(
@@ -23,7 +24,8 @@ public class ArenaParticipant9CAPI
         int portraitId,
         int winScore,
         int loseScore,
-        int cp)
+        int cp,
+        int ticket)
     {
         AvatarAddr = avatarAddr;
         Score = score;
@@ -32,7 +34,8 @@ public class ArenaParticipant9CAPI
         LoseScore = loseScore;
         Cp = cp;
         PortraitId = portraitId;
-        Name = avatarState.name;
+        NameWithHash = avatarState.NameWithHash;
         Level = avatarState.level;
+        Ticket = ticket;
     }
 }

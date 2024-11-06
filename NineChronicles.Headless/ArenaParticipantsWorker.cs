@@ -10,6 +10,8 @@ using Libplanet.Crypto;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Hosting;
 using Nekoyume;
+using Nekoyume.Action;
+using Nekoyume.Arena;
 using Nekoyume.Battle;
 using Nekoyume.Helper;
 using Nekoyume.Model.Arena;
@@ -190,11 +192,14 @@ public class ArenaParticipantsWorker : BackgroundService
     /// <summary>
     /// Retrieve a list of arena participants based on the provided world state, avatar address list, and avatar addresses with scores and ranks.
     /// </summary>
+    /// <param name="blockIndex">Current Blockchain Index.</param>
     /// <param name="worldState">The world state from which to retrieve the arena participants.</param>
     /// <param name="avatarAddrList">The list of avatar addresses to filter the matching participants.</param>
+    /// <param name="roundData">The roundData information for ticket calcuations.</param>
     /// <param name="avatarAddrAndScoresWithRank">The list of avatar addresses with their scores and ranks.</param>
+    /// <param name="arenaParticipants">The list of participants.</param>
     /// <returns>A list of arena participants.</returns>
-    public static List<ArenaParticipant> GetArenaParticipants(IWorldState worldState, List<Address> avatarAddrList, List<(Address avatarAddr, int score, int rank)> avatarAddrAndScoresWithRank)
+    public static List<ArenaParticipant9CAPI> GetArenaParticipants(long blockIndex, IWorldState worldState, List<Address> avatarAddrList, ArenaSheet.RoundData roundData, List<(Address avatarAddr, int score, int rank)> avatarAddrAndScoresWithRank, ArenaParticipants arenaParticipants)
     {
         var runeListSheet = worldState.GetSheet<RuneListSheet>();
         var costumeSheet = worldState.GetSheet<CostumeStatSheet>();
@@ -268,8 +273,24 @@ public class ArenaParticipantsWorker : BackgroundService
             var cp = CPHelper.TotalCP(equipments, costumes, runeOptions, avatar.level, row, costumeSheet, collectionModifiers,
                 RuneHelper.CalculateRuneLevelBonus(runeStates, runeListSheet, worldState.GetSheet<RuneLevelBonusSheet>())
             );
+
+            var participant = arenaParticipants.AvatarAddresses.FirstOrDefault(a => a == avatar.address);
+
+            var arenaInformationAdr = ArenaInformation.DeriveAddress(participant, roundData.ChampionshipId, roundData.Round);
+            if (!worldState.TryGetArenaInformation(arenaInformationAdr, out var arenaInformation))
+            {
+                throw new ArenaParticipantsNotFoundException(
+                    $"[ChampionshipId({roundData.ChampionshipId}) - round({roundData.Round})");
+            }
+            var currentTicketResetCount = ArenaHelper.GetCurrentTicketResetCount(blockIndex, roundData.StartBlockIndex, worldState.GetGameConfigState().DailyArenaInterval);
+            var ticket = arenaInformation.Ticket;
+            if (ticket < 8 && arenaInformation.TicketResetCount < currentTicketResetCount)
+            {
+                ticket = 8;
+            
+            }
             var portraitId = StateQuery.GetPortraitId(equipments, costumes);
-            return new ArenaParticipant(
+            return new ArenaParticipant9CAPI(
                 avatarAddr,
                 score,
                 rank,
@@ -277,7 +298,8 @@ public class ArenaParticipantsWorker : BackgroundService
                 portraitId,
                 0,
                 0,
-                cp
+                cp,
+                ticket
             );
         }).ToList();
         return result;
@@ -315,8 +337,8 @@ public class ArenaParticipantsWorker : BackgroundService
 
         var avatarAddrList = participants.AvatarAddresses;
         var avatarAddrAndScoresWithRank = AvatarAddrAndScoresWithRank(avatarAddrList, currentRoundData, worldState);
-        var result = GetArenaParticipants(worldState, avatarAddrList, avatarAddrAndScoresWithRank);
-        _cache.ArenaParticipantsCache.Set(cacheKey, result, TimeSpan.FromHours(1));
+        var result = GetArenaParticipants(blockIndex, worldState, avatarAddrList, currentRoundData, avatarAddrAndScoresWithRank, participants);
+        _cache.ArenaParticipantsCache.Set(cacheKey, result, TimeSpan.FromMinutes(2));
         sw.Stop();
         _logger.Information("[ArenaParticipantsWorker]Set Arena Cache[{CacheKey}]: {Elapsed}", cacheKey, sw.Elapsed);
     }
