@@ -43,5 +43,9 @@ public class ArenaParticipantType : ObjectGraphType<ArenaParticipant>
             nameof(ArenaParticipant.NameWithHash),
             description: "Name of avatar.",
             resolve: context => context.Source.NameWithHash);
+        Field<NonNullGraphType<IntGraphType>>(
+            nameof(ArenaParticipant.Ticket),
+            description: "Level of avatar.",
+            resolve: context => context.Source.Ticket);
     }
 }

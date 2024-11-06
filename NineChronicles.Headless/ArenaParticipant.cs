@@ -10,6 +10,7 @@ public class ArenaParticipant
     public readonly int Rank;
     public int WinScore;
     public int LoseScore;
+    public int Ticket;
     public readonly int Cp;
     public readonly int PortraitId;
     public readonly string NameWithHash;
@@ -23,7 +24,8 @@ public class ArenaParticipant
         int portraitId,
         int winScore,
         int loseScore,
-        int cp)
+        int cp,
+        int ticket)
     {
         AvatarAddr = avatarAddr;
         Score = score;
@@ -34,5 +36,6 @@ public class ArenaParticipant
         PortraitId = portraitId;
         NameWithHash = avatarState.NameWithHash;
         Level = avatarState.level;
+        Ticket = ticket;
     }
 }

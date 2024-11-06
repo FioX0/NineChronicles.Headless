@@ -199,7 +199,7 @@ public class ArenaParticipantsWorker : BackgroundService
     /// <param name="avatarAddrAndScoresWithRank">The list of avatar addresses with their scores and ranks.</param>
     /// <param name="arenaParticipants">The list of participants.</param>
     /// <returns>A list of arena participants.</returns>
-    public static List<ArenaParticipant9CAPI> GetArenaParticipants(long blockIndex, IWorldState worldState, List<Address> avatarAddrList, ArenaSheet.RoundData roundData, List<(Address avatarAddr, int score, int rank)> avatarAddrAndScoresWithRank, ArenaParticipants arenaParticipants)
+    public static List<ArenaParticipant> GetArenaParticipants(long blockIndex, IWorldState worldState, List<Address> avatarAddrList, ArenaSheet.RoundData roundData, List<(Address avatarAddr, int score, int rank)> avatarAddrAndScoresWithRank, ArenaParticipants arenaParticipants)
     {
         var runeListSheet = worldState.GetSheet<RuneListSheet>();
         var costumeSheet = worldState.GetSheet<CostumeStatSheet>();
@@ -290,7 +290,7 @@ public class ArenaParticipantsWorker : BackgroundService
             
             }
             var portraitId = StateQuery.GetPortraitId(equipments, costumes);
-            return new ArenaParticipant9CAPI(
+            return new ArenaParticipant(
                 avatarAddr,
                 score,
                 rank,
