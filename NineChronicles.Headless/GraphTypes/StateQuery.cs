@@ -41,6 +41,9 @@ using MagicOnion.Server.HttpGateway.Swagger.Schemas;
 using GraphQL.NewtonsoftJson;
 using Nekoyume.TableData.Rune;
 using Nekoyume.Helper;
+using Nekoyume.Action.Exceptions.AdventureBoss;
+using Nekoyume.Model.AdventureBoss;
+using Nekoyume.Action.AdventureBoss;
 
 
 namespace NineChronicles.Headless.GraphTypes
@@ -1445,6 +1448,59 @@ namespace NineChronicles.Headless.GraphTypes
                     var joinedGuild = (Address?)repository.GetJoinedGuild(agentAddress);
 
                     return joinedGuild;
+                }
+            );
+
+            Field<NonNullGraphType<ListGraphType<ArenaParticipantType9CAPI>>>(
+                name: "AventureBossSeasonStatus",
+                description: "Get AdventureBossStatus.",
+                arguments: new QueryArguments(
+                    new QueryArgument<NonNullGraphType<AddressType>>
+                    {
+                        Name = "avatarAddress",
+                        Description = "Address of avatar."
+                    }
+                ),
+                resolve: context =>
+                {
+                    var avatarAddress = context.GetArgument<Address>("avatarAddress");
+
+                    var avatarState = context.Source.WorldState.GetAvatarState(avatarAddress);
+                    // Validation
+                    var latestSeason = context.Source.WorldState.GetLatestAdventureBossSeason();
+
+                    if (context.Source.BlockIndex > latestSeason.EndBlockIndex)
+                    {
+                        throw new InvalidSeasonException(
+                            $"Season finished at block {latestSeason.EndBlockIndex}."
+                        );
+                    }
+
+                    var exploreBoard = context.Source.WorldState.GetExploreBoard(latestSeason.Season);
+                    Explorer explorer;
+                    if (context.Source.WorldState.TryGetExplorer(latestSeason.Season, avatarAddress, out var exp))
+                    {
+                        explorer = exp;
+                    }
+                    else
+                    {
+                        explorer = new Explorer(avatarAddress, avatarState.name);
+                        var explorerList = context.Source.WorldState.GetExplorerList(latestSeason.Season);
+                        explorerList.AddExplorer(avatarAddress, avatarState.name);
+                        exploreBoard.ExplorerCount = explorerList.Explorers.Count;
+                    }
+
+                    if (explorer.Floor == explorer.MaxFloor)
+                    {
+                        throw new InvalidOperationException("Reached to locked floor. Unlock floor first.");
+                    }
+
+                    if (explorer.Floor == UnlockFloor.TotalFloor)
+                    {
+                        throw new InvalidOperationException("Already cleared all floors");
+                    }
+
+                    return null;
                 }
             );
 
