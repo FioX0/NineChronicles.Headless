@@ -1451,8 +1451,8 @@ namespace NineChronicles.Headless.GraphTypes
                 }
             );
 
-            Field<NonNullGraphType<ListGraphType<ArenaParticipantType9CAPI>>>(
-                name: "AventureBossSeasonStatus",
+            Field<AdventureBossSeason>(
+                name: "adventureBossSeasonStatus",
                 description: "Get AdventureBossStatus.",
                 arguments: new QueryArguments(
                     new QueryArgument<NonNullGraphType<AddressType>>
@@ -1469,13 +1469,6 @@ namespace NineChronicles.Headless.GraphTypes
                     // Validation
                     var latestSeason = context.Source.WorldState.GetLatestAdventureBossSeason();
 
-                    if (context.Source.BlockIndex > latestSeason.EndBlockIndex)
-                    {
-                        throw new InvalidSeasonException(
-                            $"Season finished at block {latestSeason.EndBlockIndex}."
-                        );
-                    }
-
                     var exploreBoard = context.Source.WorldState.GetExploreBoard(latestSeason.Season);
                     Explorer explorer;
                     if (context.Source.WorldState.TryGetExplorer(latestSeason.Season, avatarAddress, out var exp))
@@ -1490,17 +1483,29 @@ namespace NineChronicles.Headless.GraphTypes
                         exploreBoard.ExplorerCount = explorerList.Explorers.Count;
                     }
 
-                    if (explorer.Floor == explorer.MaxFloor)
+                    AdventureBossSeasonStatus adventureBossSeason = new AdventureBossSeasonStatus();
+
+                    if (context.Source.BlockIndex > latestSeason.EndBlockIndex)
                     {
-                        throw new InvalidOperationException("Reached to locked floor. Unlock floor first.");
+                        adventureBossSeason.Finished = true;
+                    }
+                    else
+                    {
+                        adventureBossSeason.Finished = false;
                     }
 
-                    if (explorer.Floor == UnlockFloor.TotalFloor)
-                    {
-                        throw new InvalidOperationException("Already cleared all floors");
-                    }
+                    adventureBossSeason.BossId = latestSeason.BossId;
+                    adventureBossSeason.EndBlockIndex = latestSeason.EndBlockIndex;
+                    adventureBossSeason.StartBlockIndex = latestSeason.StartBlockIndex;
+                    adventureBossSeason.NextStartBlockIndex = latestSeason.NextStartBlockIndex;
+                    adventureBossSeason.Floor = explorer.Floor;
+                    adventureBossSeason.MaxFloor = explorer.MaxFloor;
+                    adventureBossSeason.Name = explorer.Name;
+                    adventureBossSeason.UsedApPotion = explorer.UsedApPotion;
+                    adventureBossSeason.UsedGoldenDust = explorer.UsedGoldenDust;
+                    adventureBossSeason.UsedNcg = (float)explorer.UsedNcg;
 
-                    return null;
+                    return adventureBossSeason;
                 }
             );
 
