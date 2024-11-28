@@ -730,7 +730,7 @@ namespace NineChronicles.Headless.GraphTypes
                             typeof(MaterialItemSheet),
                             typeof(RuneListSheet),
                             typeof(CollectionSheet),
-                            typeof(DeBuffLimitSheet),
+                            typeof(BuffLimitSheet),
                             typeof(RuneLevelBonusSheet),
                             typeof(BuffLinkSheet),
                     });
@@ -808,7 +808,7 @@ namespace NineChronicles.Headless.GraphTypes
                             }
                         }
                     }
-                    var deBuffLimitSheet = sheets.GetSheet<DeBuffLimitSheet>();
+                    var deBuffLimitSheet = sheets.GetSheet<BuffLimitSheet>();
 
                     ArenaPlayerDigest ExtraMyArenaPlayerDigest = new ArenaPlayerDigest(
                         AvatarState,

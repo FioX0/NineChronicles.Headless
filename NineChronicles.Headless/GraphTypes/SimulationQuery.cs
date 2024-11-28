@@ -103,7 +103,7 @@ namespace NineChronicles.Headless.GraphTypes
                             typeof(RuneListSheet),
                             typeof(CollectionSheet),
                             typeof(RuneLevelBonusSheet),
-                            typeof(DeBuffLimitSheet),
+                            typeof(BuffLimitSheet),
                             typeof(BuffLinkSheet),
                         });
 
@@ -190,7 +190,7 @@ namespace NineChronicles.Headless.GraphTypes
                     Random rnd  =new Random();
 
                     var simulatorSheets = sheets.GetSimulatorSheets();
-                    var deBuffLimitSheet = sheets.GetSheet<DeBuffLimitSheet>();
+                    var BuffLimitSheet = sheets.GetSheet<BuffLimitSheet>();
                     var buffLinkSheet = sheets.GetSheet<BuffLinkSheet>();
                     var gameConfigState = context.Source.WorldState.GetGameConfigState();
 
@@ -220,7 +220,7 @@ namespace NineChronicles.Headless.GraphTypes
                             sheets.GetSheet<CostumeStatSheet>(),
                             StageSimulator.GetWaveRewards(random, stageRow, materialItemSheet),
                             modifiers[myAvatarAddress],
-                            deBuffLimitSheet,
+                            BuffLimitSheet,
                             buffLinkSheet,
                             false,
                             shatterStrikeMaxDamage: gameConfigState.ShatterStrikeMaxDamage
@@ -293,7 +293,7 @@ namespace NineChronicles.Headless.GraphTypes
                         typeof(RuneListSheet),
                         typeof(RuneLevelBonusSheet),
                         typeof(CollectionSheet),
-                        typeof(DeBuffLimitSheet),
+                        typeof(BuffLimitSheet),
                         typeof(BuffLinkSheet),
                     });
 
@@ -393,7 +393,7 @@ namespace NineChronicles.Headless.GraphTypes
                         }
                     }
 
-                    var deBuffLimitSheet = sheets.GetSheet<DeBuffLimitSheet>();
+                    var BuffLimitSheet = sheets.GetSheet<BuffLimitSheet>();
                     Random rnd  =new Random();          
 
                     int win = 0;
@@ -416,7 +416,7 @@ namespace NineChronicles.Headless.GraphTypes
                             arenaSheets,
                             modifiers[myAvatarAddress],
                             modifiers[enemyAvatarAddress],
-                            deBuffLimitSheet,
+                            BuffLimitSheet,
                             buffLinkSheet,
                             true);
                             
