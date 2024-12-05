@@ -681,6 +681,29 @@ namespace NineChronicles.Headless.GraphTypes
                     }
                 }
             );
+
+            Field<ArenaStateType>(
+                "championshipArenaStatus",
+                description: "Allows you to pull data",
+                arguments: new QueryArguments(
+                    new QueryArgument<NonNullGraphType<AddressType>>
+                    {
+                        Name = "avatarAddress",
+                        Description = "Address of avatar."
+                    }
+                ),
+                resolve: context =>
+                {
+                    var worldState = context.Source.WorldState;
+#pragma warning disable CS8629 // Nullable value type may be null.
+                    var currentRoundData = worldState.GetSheet<ArenaSheet>().GetRoundByBlockIndex((long)context.Source.BlockIndex);
+#pragma warning restore CS8629 // Nullable value type may be null.
+                    ArenaState arenaState = new ArenaState();
+                    arenaState.championshipId = currentRoundData.ChampionshipId;
+                    arenaState.championshipIndex = currentRoundData.Round;
+                    return arenaState;
+                }
+            );
             Field<ChampionshipArenaStateType>(
                 name: "championshipArena",
                 description: "State for championShip arena.",
