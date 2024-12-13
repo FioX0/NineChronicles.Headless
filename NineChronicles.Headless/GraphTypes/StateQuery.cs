@@ -602,7 +602,7 @@ namespace NineChronicles.Headless.GraphTypes
                     return null;
                 }
             );
-            Field<CombinationSlotStateType>(
+            Field<ListGraphType<CombinationSlotStateType>>(
                 "CombinationSlot",
                 description: "Allows you to see crafting slot data.",
                 arguments: new QueryArguments(
@@ -610,29 +610,14 @@ namespace NineChronicles.Headless.GraphTypes
                     {
                         Name = "avatarAddress",
                         Description = "Address of avatar."
-                    },
-                    new QueryArgument<NonNullGraphType<IntGraphType>>
-                    {
-                        Name = "slot",
-                        Description = "Slot index 0-3"
                     }
                 ),
                 resolve: context =>
                 {
-                    var agentAddress = context.GetArgument<Address>("avatarAddress");
-                    var index = context.GetArgument<int>("slot");
-
-                    if(index < 0 || index > 3)
-                    {
-                        throw new Exception("Invalid Slot Index");
-                    }
-                    var deriveAddress = CombinationSlotState.DeriveAddress(agentAddress, index);
-                    if (context.Source.WorldState.GetLegacyState(deriveAddress) is Dictionary state)
-                    {
-                        return new CombinationSlotState(state);
-                    }
-
-                    return null;
+                    var avatarAddress = context.GetArgument<Address>("avatarAddress");
+                    List<CombinationSlotStateExtended> combinationSlotDataList = new List<CombinationSlotStateExtended>();
+                    var allSlotState = context.Source.WorldState.GetAllCombinationSlotState(avatarAddress);
+                    return new List<CombinationSlotState>(allSlotState);
                 }
             );
             Field<ListGraphType<CombinationSlotStateTypeExtended>>(
