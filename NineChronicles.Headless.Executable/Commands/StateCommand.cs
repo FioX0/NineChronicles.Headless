@@ -299,12 +299,14 @@ namespace NineChronicles.Headless.Executable.Commands
             long tip = chain.Tip.Index;
             while (start != end)
             {
+                #pragma warning disable SA1407 // ArithmeticExpressionsMustDeclarePrecedence
                 long upper = Math.Max(start, end);
                 long lower = Math.Min(start, end);
                 long dir = end > start ? 1L : -1L;
                 long idx = lower + (upper - lower) / 2L;
                 idx = Math.Min(upper, idx);
                 idx = Math.Max(lower, idx);
+                #pragma warning restore SA1407 // ArithmeticExpressionsMustDeclarePrecedence
 
                 Block b = chain[idx];
                 if (willGoFurther(b))
