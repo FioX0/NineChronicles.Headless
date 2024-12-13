@@ -7,6 +7,9 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="Libplanet.Explorer" Version="$(LibplanetVersion)" />
+    <PackageReference Include="Libplanet.Net" Version="$(LibplanetVersion)" />
+    <PackageReference Include="Libplanet.RocksDBStore" Version="$(LibplanetVersion)" />
     <PackageReference Include="Microsoft.Extensions.Hosting" Version="3.1.1" />
     <PackageReference Include="SonarAnalyzer.CSharp" Version="8.49.0.57237">
       <PrivateAssets>all</PrivateAssets>
@@ -16,18 +19,6 @@
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
-  </ItemGroup>
-
-  <ItemGroup Condition="!$(UseLocalLibplanet)">
-    <PackageReference Include="Libplanet.Explorer" Version="$(LibplanetVersion)" />
-    <PackageReference Include="Libplanet.Net" Version="$(LibplanetVersion)" />
-    <PackageReference Include="Libplanet.RocksDBStore" Version="$(LibplanetVersion)" />
-  </ItemGroup>
-
-  <ItemGroup Condition="$(UseLocalLibplanet)">
-    <ProjectReference Include="$(LibplanetDirectory)\tools\Libplanet.Explorer\Libplanet.Explorer.csproj" />
-    <ProjectReference Include="$(LibplanetDirectory)\src\Libplanet.Net\Libplanet.Net.csproj" />
-    <ProjectReference Include="$(LibplanetDirectory)\src\Libplanet.RocksDBStore\Libplanet.RocksDBStore.csproj" />
   </ItemGroup>
 
   <ItemGroup>
