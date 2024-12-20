@@ -27,13 +27,16 @@ namespace NineChronicles.Headless.Middleware
         private readonly ConcurrentDictionary<string, HashSet<Address>> _ipSignerList;
         private readonly IOptions<MultiAccountManagerProperties> _options;
         private ActionEvaluationPublisher _publisher;
+        private readonly System.IdentityModel.Tokens.Jwt.JwtSecurityTokenHandler _tokenHandler = new();
+        private readonly Microsoft.IdentityModel.Tokens.TokenValidationParameters _validationParams;
 
         public HttpMultiAccountManagementMiddleware(
             RequestDelegate next,
             StandaloneContext standaloneContext,
             ConcurrentDictionary<string, HashSet<Address>> ipSignerList,
             IOptions<MultiAccountManagerProperties> options,
-            ActionEvaluationPublisher publisher)
+            ActionEvaluationPublisher publisher,
+            Microsoft.Extensions.Configuration.IConfiguration configuration)
         {
             _next = next;
             _logger = Log.Logger.ForContext<HttpMultiAccountManagementMiddleware>();
@@ -41,6 +44,18 @@ namespace NineChronicles.Headless.Middleware
             _ipSignerList = ipSignerList;
             _options = options;
             _publisher = publisher;
+            var jwtConfig = configuration.GetSection("Jwt");
+            var issuer = jwtConfig["Issuer"] ?? "";
+            var key = jwtConfig["Key"] ?? "";
+            _validationParams = new Microsoft.IdentityModel.Tokens.TokenValidationParameters
+            {
+                ValidateIssuer = true,
+                ValidateAudience = false,
+                ValidateLifetime = true,
+                ValidateIssuerSigningKey = true,
+                ValidIssuer = issuer,
+                IssuerSigningKey = new Microsoft.IdentityModel.Tokens.SymmetricSecurityKey(System.Text.Encoding.ASCII.GetBytes(key.PadRight(512 / 8, '\0')))
+            };
         }
 
         private static void ManageMultiAccount(Address agent)
@@ -148,6 +163,22 @@ namespace NineChronicles.Headless.Middleware
             }
 
             await _next(context);
+        }
+
+        private (string scheme, string token) ExtractSchemeAndToken(Microsoft.Extensions.Primitives.StringValues authorizationHeader)
+        {
+            if (authorizationHeader.Count == 0 || string.IsNullOrWhiteSpace(authorizationHeader[0]))
+            {
+                throw new System.ArgumentException("Authorization header is missing or empty.");
+            }
+
+            var headerValues = authorizationHeader[0]!.Split(" ");
+            if (headerValues.Length != 2)
+            {
+                throw new System.ArgumentException("Invalid Authorization header format. Expected 'Scheme Token'.");
+            }
+
+            return (headerValues[0], headerValues[1]);
         }
 
         private void UpdateIpSignerList(string ip, Address agent)

@@ -209,6 +209,9 @@ namespace NineChronicles.Headless.Executable
             [Option("consensus-propose-second-base",
                 Description = "A propose second base for consensus context timeout. The unit is second.")]
             int? consensusProposeSecondBase = null,
+            [Option("consensus-enter-precommit-delay",
+                Description = "A precommit delay manually set. The unit is millisecond.")]
+            int? consensusEnterPreCommitDelay = null,
             [Option("maximum-transaction-per-block",
                 Description = "Maximum transactions allowed in a block. null by default.")]
             int? maxTransactionPerBlock = null,
@@ -302,7 +305,7 @@ namespace NineChronicles.Headless.Executable
                 logActionRenders, confirmations,
                 txLifeTime, messageTimeout, tipTimeout, demandBuffer, skipPreload,
                 minimumBroadcastTarget, bucketSize, chainTipStaleBehaviorType, txQuotaPerSigner, maximumPollPeers,
-                consensusPort, consensusPrivateKeyString, consensusSeedStrings, consensusTargetBlockIntervalMilliseconds, consensusProposeSecondBase,
+                consensusPort, consensusPrivateKeyString, consensusSeedStrings, consensusTargetBlockIntervalMilliseconds, consensusProposeSecondBase, consensusEnterPreCommitDelay,
                 maxTransactionPerBlock, arenaParticipantsSyncInterval, remoteKeyValueService
             );
 
@@ -371,7 +374,8 @@ namespace NineChronicles.Headless.Executable
                         consensusPrivateKeyString: headlessConfig.ConsensusPrivateKeyString,
                         consensusSeedStrings: headlessConfig.ConsensusSeedStrings,
                         consensusTargetBlockIntervalMilliseconds: headlessConfig.ConsensusTargetBlockIntervalMilliseconds,
-                        consensusProposeSecondBase: headlessConfig.ConsensusProposeSecondBase,
+                        consensusProposeTimeoutBase: headlessConfig.ConsensusProposeTimeoutBase,
+                        consensusEnterPreCommitDelay: headlessConfig.ConsensusEnterPreCommitDelay,
                         maximumPollPeers: headlessConfig.MaximumPollPeers,
                         actionEvaluatorConfiguration: actionEvaluatorConfiguration
                     );
