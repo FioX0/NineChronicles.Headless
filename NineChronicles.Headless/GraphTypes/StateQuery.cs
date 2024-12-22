@@ -1476,6 +1476,7 @@ namespace NineChronicles.Headless.GraphTypes
                     var avatarState = context.Source.WorldState.GetAvatarState(avatarAddress);
                     // Validation
                     var latestSeason = context.Source.WorldState.GetLatestAdventureBossSeason();
+                    var bountyBoard =  context.Source.WorldState.GetBountyBoard(latestSeason.Season);
 
                     var exploreBoard = context.Source.WorldState.GetExploreBoard(latestSeason.Season);
                     Explorer explorer;
@@ -1512,6 +1513,7 @@ namespace NineChronicles.Headless.GraphTypes
                     adventureBossSeason.UsedApPotion = explorer.UsedApPotion;
                     adventureBossSeason.UsedGoldenDust = explorer.UsedGoldenDust;
                     adventureBossSeason.UsedNcg = (float)explorer.UsedNcg;
+                    adventureBossSeason.TotalBounty = bountyBoard.totalBounty().RawValue/100;
 
                     return adventureBossSeason;
                 }

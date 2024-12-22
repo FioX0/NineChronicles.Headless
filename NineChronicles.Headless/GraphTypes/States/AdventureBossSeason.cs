@@ -51,5 +51,9 @@ public class AdventureBossSeason : ObjectGraphType<AdventureBossSeasonStatus>
             nameof(AdventureBossSeasonStatus.UsedNcg),
             description: "Level of avatar.",
             resolve: context => context.Source.UsedNcg);
+        Field<NonNullGraphType<BigIntGraphType>>(
+            nameof(AdventureBossSeasonStatus.TotalBounty),
+            description: "Level of avatar.",
+            resolve: context => context.Source.TotalBounty);
     }
 }

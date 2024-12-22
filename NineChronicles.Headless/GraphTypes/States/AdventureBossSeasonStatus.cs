@@ -1,3 +1,4 @@
+using System.Numerics;
 using Libplanet.Crypto;
 using Nekoyume.Model.State;
 
@@ -16,4 +17,5 @@ public class AdventureBossSeasonStatus
     public int UsedApPotion { get; set; }
     public int UsedGoldenDust { get; set; }
     public float UsedNcg { get; set; }
+    public BigInteger TotalBounty { get; set; }
 }
