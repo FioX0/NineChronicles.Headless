@@ -1519,6 +1519,53 @@ namespace NineChronicles.Headless.GraphTypes
                 }
             );
 
+            Field<NonNullGraphType<ByteStringType>>(
+                name: "AdventuraBossExplore",
+                arguments: new QueryArguments(
+                    new QueryArgument<NonNullGraphType<AddressType>>
+                    {
+                        Name = "avatarAddress",
+                        Description = "Avatar address."
+                    },
+                    new QueryArgument<ListGraphType<GuidGraphType>>
+                    {
+                        Name = "costumeIds",
+                        Description = "List of costume id for equip."
+                    },
+                    new QueryArgument<ListGraphType<GuidGraphType>>
+                    {
+                        Name = "equipmentIds",
+                        Description = "List of equipment id for equip."
+                    },
+                    new QueryArgument<ListGraphType<NonNullGraphType<RuneSlotInfoInputType>>>
+                    {
+                        Name = "runeSlotInfos",
+                        DefaultValue = new List<RuneSlotInfo>(),
+                        Description = "List of rune slot info for equip."
+                    }
+                ),
+                resolve: context =>
+                {
+                    Address myAvatarAddress = context.GetArgument<Address>("avatarAddress");
+                    List<Guid> costumeIds = context.GetArgument<List<Guid>>("costumeIds") ?? new List<Guid>();
+                    List<Guid> equipmentIds = context.GetArgument<List<Guid>>("equipmentIds") ?? new List<Guid>();
+                    List<RuneSlotInfo> runeSlotInfos = context.GetArgument<List<RuneSlotInfo>>("runeSlotInfos");
+
+                    var blockIndex = context.Source.BlockIndex!.Value;
+
+                    ActionBase action = new ExploreAdventureBoss
+                    {
+                        Season = (int)context.Source.WorldState.GetLatestAdventureBossSeason().Season,
+                        AvatarAddress = myAvatarAddress,
+                        Costumes = costumeIds,
+                        Equipments = equipmentIds,
+                        RuneInfos = runeSlotInfos
+                    };
+
+                    return _codec.Encode(action.PlainValue);
+                }
+            );
+
             Field<StringGraphType>(
                 name: "share",
                 description: "State for delegation share.",
