@@ -1549,6 +1549,7 @@ namespace NineChronicles.Headless.GraphTypes
                     Address myAvatarAddress = context.GetArgument<Address>("avatarAddress");
                     List<Guid> costumeIds = context.GetArgument<List<Guid>>("costumeIds") ?? new List<Guid>();
                     List<Guid> equipmentIds = context.GetArgument<List<Guid>>("equipmentIds") ?? new List<Guid>();
+                    List<Guid> consumableIds = context.GetArgument<List<Guid>>("consumableIds") ?? new List<Guid>();
                     List<RuneSlotInfo> runeSlotInfos = context.GetArgument<List<RuneSlotInfo>>("runeSlotInfos");
 
                     var blockIndex = context.Source.BlockIndex!.Value;
@@ -1559,7 +1560,8 @@ namespace NineChronicles.Headless.GraphTypes
                         AvatarAddress = myAvatarAddress,
                         Costumes = costumeIds,
                         Equipments = equipmentIds,
-                        RuneInfos = runeSlotInfos
+                        RuneInfos = runeSlotInfos,
+                        Foods = consumableIds
                     };
 
                     return _codec.Encode(action.PlainValue);
