@@ -1616,6 +1616,37 @@ namespace NineChronicles.Headless.GraphTypes
                 }
             );
 
+            Field<NonNullGraphType<ByteStringType>>(
+                name: "AdventuraBossUnlock",
+                arguments: new QueryArguments(
+                    new QueryArgument<NonNullGraphType<AddressType>>
+                    {
+                        Name = "avatarAddress",
+                        Description = "Avatar address."
+                    },
+                    new QueryArgument<ListGraphType<BooleanGraphType>>
+                    {
+                        Name = "useNcg",
+                        Description = "Use NCG"
+                    }
+                ),
+                resolve: context =>
+                {
+                    Address myAvatarAddress = context.GetArgument<Address>("avatarAddress");
+                    bool useNCG = context.GetArgument<bool>("useNcg");
+
+
+                    ActionBase action = new UnlockFloor
+                    {
+                        Season = (int)context.Source.WorldState.GetLatestAdventureBossSeason().Season,
+                        AvatarAddress = myAvatarAddress,
+                        UseNcg = useNCG
+                    };
+
+                    return _codec.Encode(action.PlainValue);
+                }
+            );
+
             Field<StringGraphType>(
                 name: "share",
                 description: "State for delegation share.",
