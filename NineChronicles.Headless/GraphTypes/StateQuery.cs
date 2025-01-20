@@ -1624,7 +1624,7 @@ namespace NineChronicles.Headless.GraphTypes
                         Name = "avatarAddress",
                         Description = "Avatar address."
                     },
-                    new QueryArgument<ListGraphType<BooleanGraphType>>
+                    new QueryArgument<BooleanGraphType>
                     {
                         Name = "useNcg",
                         Description = "Use NCG"
