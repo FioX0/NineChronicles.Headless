@@ -27,6 +27,12 @@ using Nekoyume.Helper;
 using Nekoyume.Model.Stat;
 using Nekoyume.Module;
 using Nekoyume.TableData.Rune;
+using Nekoyume.Model.AdventureBoss;
+using Nekoyume.TableData.AdventureBoss;
+using Nekoyume.Battle.AdventureBoss;
+using Humanizer;
+using Libplanet.Extensions.ActionEvaluatorCommonComponents;
+using static Nekoyume.Model.BattleStatus.Arena.ArenaLog;
 
 namespace NineChronicles.Headless.GraphTypes
 {
@@ -187,7 +193,7 @@ namespace NineChronicles.Headless.GraphTypes
                         }
                     }
 
-                    Random rnd  =new Random();
+                    System.Random rnd  =new System.Random();
 
                     var simulatorSheets = sheets.GetSimulatorSheets();
                     var BuffLimitSheet = sheets.GetSheet<BuffLimitSheet>();
@@ -256,6 +262,7 @@ namespace NineChronicles.Headless.GraphTypes
                     };
                     return StageResult;
                 });
+
             Field<NonNullGraphType<ArenaSimulationStateType>>(
                 name: "arenaPercentageCalculator",
                 description: "State for championShip arena.",
@@ -394,7 +401,7 @@ namespace NineChronicles.Headless.GraphTypes
                     }
 
                     var BuffLimitSheet = sheets.GetSheet<BuffLimitSheet>();
-                    Random rnd  =new Random();          
+                    System.Random rnd  =new System.Random();          
 
                     int win = 0;
                     int loss = 0;
@@ -436,6 +443,7 @@ namespace NineChronicles.Headless.GraphTypes
                     arenaSimulationState.result = arenaResultsList;
                     return arenaSimulationState;
                 });
+
             Field<NonNullGraphType<CombinationSimulationStateType>>(
                name: "combinationSimulator",
                description: "State for championShip arena.",
@@ -671,7 +679,7 @@ namespace NineChronicles.Headless.GraphTypes
                             endBlockIndex,
                             madeWithMimisbrunnrRecipe: false
                        );
-                       Random random = new Random();
+                       System.Random random = new System.Random();
                        int seed = random.Next(1, 1000000);
                        LocalRandom random1 = new LocalRandom(seed);
 
@@ -729,10 +737,244 @@ namespace NineChronicles.Headless.GraphTypes
                    combinationSimulationState.spellPercentage = Math.Round(((decimal)spell / simulationCount) * 100m, 2);
                    combinationSimulationState.result = combinationResultsList;
                    return combinationSimulationState;
-               });
+               }
+            );
+
+            Field<NonNullGraphType<AdventureBossSimulationStateType>>(
+                name: "adventureBossPercentageCalculator",
+                description: "State for championShip arena.",
+                arguments: new QueryArguments(
+                    new QueryArgument<NonNullGraphType<AddressType>>
+                    {
+                        Name = "agentAddress",
+                        Description = "Agent address."
+                    },
+                    new QueryArgument<NonNullGraphType<AddressType>>
+                    {
+                        Name = "avatarAddress",
+                        Description = "Avatar address."
+                    },
+                    new QueryArgument<NonNullGraphType<IntGraphType>>
+                    {
+                        Name = "simulationCount",
+                        Description = "Amount of simulations, between 1 and 1000"
+                    }
+                ),
+                resolve: context =>
+                {
+                    Address myAgentAddress = context.GetArgument<Address>("agentAddress");
+                    Address myAvatarAddress = context.GetArgument<Address>("avatarAddress");
+                    var Foods = context.GetArgument<List<Guid>>("foodIds");
+
+                    int simulationCount = context.GetArgument<int>("simulationCount");
+
+                    var states = context.Source.WorldState;
+
+                    // Validation
+                    var season = states.GetLatestAdventureBossSeason();
+
+                    if (!states.TryGetAvatarState(myAgentAddress, myAvatarAddress, out var avatarState))
+                    {
+                        throw new FailedLoadStateException(
+                            $"Aborted as the avatar state of the signer was failed to load.");
+                    }
+
+                    var exploreBoard = states.GetExploreBoard(season.Season);
+
+                    Explorer explorer;
+                    if (states.TryGetExplorer(season.Season, myAvatarAddress, out var exp))
+                    {
+                        explorer = exp;
+                    }
+                    else
+                    {
+                        explorer = new Explorer(myAvatarAddress, avatarState.name);
+                        var explorerList = states.GetExplorerList(season.Season);
+                        explorerList.AddExplorer(myAvatarAddress, avatarState.name);
+                        exploreBoard.ExplorerCount = explorerList.Explorers.Count;
+                    }
+
+                    //if (explorer.Floor == explorer.MaxFloor)
+                    //{
+                    //    throw new InvalidOperationException("Reached to locked floor. Unlock floor first.");
+                    //}
+
+                    //if (explorer.Floor == UnlockFloor.TotalFloor)
+                    //{
+                    //    throw new InvalidOperationException("Already cleared all floors");
+                    //}
+                    var sheets = states.GetSheets(
+                        containSimulatorSheets: true,
+                        sheetTypes: new[]
+                        {
+                            typeof(AdventureBossSheet),
+                            typeof(AdventureBossFloorSheet),
+                            typeof(AdventureBossFloorWaveSheet),
+                            typeof(CollectionSheet),
+                            typeof(EnemySkillSheet),
+                            typeof(CostumeStatSheet),
+                            typeof(BuffLimitSheet),
+                            typeof(BuffLinkSheet),
+                            typeof(ItemRequirementSheet),
+                            typeof(EquipmentItemRecipeSheet),
+                            typeof(EquipmentItemSubRecipeSheetV2),
+                            typeof(EquipmentItemOptionSheet),
+                            typeof(RuneListSheet),
+                            typeof(RuneLevelBonusSheet),
+                        });
+                    var materialSheet = sheets.GetSheet<MaterialItemSheet>();
+#pragma warning disable CS8604 // Possible null reference argument.
+                    var material =
+                            materialSheet.OrderedList.First(row => row.ItemSubType == ItemSubType.ApStone);
+#pragma warning restore CS8604 // Possible null reference argument.
+                    System.Random rndom = new System.Random();
+                    
+                    //var selector = new WeightedSelector<AdventureBossFloorSheet.RewardData>((IRandom)rndom);
+                    var rewardList = new List<AdventureBossSheet.RewardAmountData>();
+
+                    // Validate
+                    var gameConfigState = states.GetGameConfigState();
+                    //if (gameConfigState is null)
+                    //{
+                    //    throw new FailedLoadStateException(
+                    //        $"{addressesHex}Aborted as the game config state was failed to load.");
+                    //}
+
+                    //MyAvatar                
+                    var myAvatar = context.Source.WorldState.GetAvatarState(myAvatarAddress);
+
+                    var myAvatarEquipments = myAvatar.inventory.Equipments;
+                    var myAvatarCostumes = myAvatar.inventory.Costumes;
+
+                    List<Guid> myEquipementList = myAvatarEquipments.Where(f => f.equipped).Select(n => n.ItemId).ToList();
+                    List<Guid> myCostumeList = myAvatarCostumes.Where(f => f.equipped).Select(n => n.ItemId).ToList();
+
+                    // update rune slot
+                    var runeSlotStateAddress =
+                        RuneSlotState.DeriveAddress(myAvatarAddress, BattleType.Adventure);
+                    var runeSlotState =
+                        states.TryGetLegacyState(runeSlotStateAddress, out List rawRuneSlotState)
+                            ? new RuneSlotState(rawRuneSlotState)
+                            : new RuneSlotState(BattleType.Adventure);
+                    var runeListSheet = sheets.GetSheet<RuneListSheet>();
+
+                    // update item slot
+                    var itemSlotStateAddress =
+                        ItemSlotState.DeriveAddress(myAvatarAddress, BattleType.Adventure);
+                    var itemSlotState =
+                        states.TryGetLegacyState(itemSlotStateAddress, out List rawItemSlotState)
+                            ? new ItemSlotState(rawItemSlotState)
+                            : new ItemSlotState(BattleType.Adventure);
+
+                    // Get data for simulator
+                    var runeStates = states.GetRuneState(myAvatarAddress, out var migrateRequired);
+
+                    var collectionExist =
+                        states.TryGetCollectionState(myAvatarAddress, out var collectionState) &&
+                        collectionState.Ids.Any();
+                    var collectionModifiers = new List<StatModifier>();
+                    if (collectionExist)
+                    {
+                        var collectionSheet = sheets.GetSheet<CollectionSheet>();
+                        collectionModifiers = collectionState.GetModifiers(collectionSheet);
+                    }
+
+                    var floorSheet = sheets.GetSheet<AdventureBossFloorSheet>();
+                    var floorWaveSheet = sheets.GetSheet<AdventureBossFloorWaveSheet>();
+                    var simulatorSheets = sheets.GetSimulatorSheets();
+                    var enemySkillSheet = sheets.GetSheet<EnemySkillSheet>();
+                    var costumeStatSheet = sheets.GetSheet<CostumeStatSheet>();
+                    var materialItemSheet = sheets.GetSheet<MaterialItemSheet>();
+                    var buffLimitSheet = sheets.GetSheet<BuffLimitSheet>();
+                    var buffLinkSheet = sheets.GetSheet<BuffLinkSheet>();
+
+                    var bossId = states.GetSheet<AdventureBossSheet>().Values
+                        .First(row => row.BossId == season.BossId).Id;
+                    var floorRows = states.GetSheet<AdventureBossFloorSheet>().Values
+                        .Where(row => row.AdventureBossId == bossId).ToList();
+                    var firstRewardSheet = states.GetSheet<AdventureBossFloorFirstRewardSheet>();
+                    var pointSheet = states.GetSheet<AdventureBossFloorPointSheet>();
+
+                    AdventureBossSimulator? simulator = null;
+                    var firstFloorId = 0;
+                    var floorIdList = new List<int>();
+
+                    // Claim floors from last failed
+#pragma warning disable CS8604 // Possible null reference argument.
+                    var exploreAp = sheets.GetSheet<AdventureBossSheet>().OrderedList
+                            .First(row => row.BossId == season.BossId).ExploreAp;
+#pragma warning restore CS8604 // Possible null reference argument.
+
+                    List<AdventureBossSimulationResult> adventureBossResultsList = new List<AdventureBossSimulationResult>();
+                    AdventureBossSimulationState adventureBossSimulationState = new AdventureBossSimulationState();
+                    adventureBossSimulationState.blockIndex = context.Source.BlockIndex;
+
+                    for (var fl = 1; fl < 20+1; fl++)
+                    {
+                        AdventureBossSimulationResult adventureBossResults = new AdventureBossSimulationResult();
+
+                        // Get Data for simulator
+                        var floorRow = floorRows.FirstOrDefault(row => row.Floor == fl);
+
+                        if (floorRow is null)
+                        {
+                            throw new FailedLoadStateException(
+                                $"Aborted as the game config state was failed to load.");
+                        }
+
+                        if (firstFloorId == 0)
+                        {
+                            firstFloorId = floorRow.Id;
+                        }
+                        
+                        int win = 0;
+                        LocalRandom random = new LocalRandom(rndom.Next());
+                        var rewards = AdventureBossSimulator.GetWaveRewards(random, floorRow, materialItemSheet);
+
+                        for(var y = 0; y < simulationCount; y++)
+                        {
+                            
+                            random = new LocalRandom(rndom.Next());
+                            simulator = new AdventureBossSimulator(
+                                bossId: season.BossId,
+                                floorId: floorRow.Id,
+                                random,
+                                avatarState,
+                                floorRow.Id == firstFloorId ? Foods : new List<Guid>(),
+                                runeStates,
+                                runeSlotState,
+                                floorRow,
+                                floorWaveSheet[floorRow.Id],
+                                simulatorSheets,
+                                enemySkillSheet,
+                                costumeStatSheet,
+                                rewards,
+                                collectionModifiers,
+                                buffLimitSheet,
+                                buffLinkSheet,
+                                false,
+                                gameConfigState.ShatterStrikeMaxDamage
+                            );
+
+                            simulator.Simulate();
+
+                            // Get Reward if cleared
+                            if (simulator.Log.IsClear)
+                            {
+                                win++;
+                            }
+                        }
+
+                        adventureBossResults.floor = fl;
+                        adventureBossResults.winPercentage = Math.Round(((decimal)win / simulationCount) * 100m, 2);
+                        adventureBossResultsList.Add(adventureBossResults);
+                    }
+                    adventureBossSimulationState.result = adventureBossResultsList;
+                    return adventureBossSimulationState;
+                }
+            );
         }
-
-
+        
         public static void AddAndUnlockOption(
             AgentState agentState,
             PetState? petState,
