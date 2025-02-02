@@ -1155,6 +1155,8 @@ namespace NineChronicles.Headless.GraphTypes
 
                     switch (subType)
                     {
+                        case 1:
+                            itemProductInfo.ItemSubType = ItemSubType.FullCostume; break;
                         case 6:
                             itemProductInfo.ItemSubType = ItemSubType.Weapon; break;
                         case 7:
@@ -1290,6 +1292,25 @@ namespace NineChronicles.Headless.GraphTypes
                     }
 
                     return null;
+                });
+
+            Field<IntGraphType>(
+                "patrolClaimBlock",
+                description: "get claim block for patrol",
+                arguments: new QueryArguments(
+                    new QueryArgument<NonNullGraphType<AddressType>>
+                    {
+                        Name = "avatarAddress",
+                        Description = "Address of agent."
+                    }
+                ),
+                resolve: context =>
+                {
+                    var avatarAddress = context.GetArgument<Address>("avatarAddress");
+
+                    context.Source.WorldState.TryGetPatrolRewardClaimedBlockIndex(avatarAddress, out var claimedBlockIndex);
+
+                    return claimedBlockIndex;
                 });
             Field<NonNullGraphType<MeadPledgeType>>(
                 "pledge",

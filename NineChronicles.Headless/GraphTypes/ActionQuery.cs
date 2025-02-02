@@ -825,6 +825,8 @@ namespace NineChronicles.Headless.GraphTypes
 
                     switch (subType)
                     {
+                        case 1:
+                            itemProductInfo.ItemSubType = ItemSubType.FullCostume; break;
                         case 6:
                             itemProductInfo.ItemSubType = ItemSubType.Weapon; break;
                         case 7:
@@ -836,6 +838,88 @@ namespace NineChronicles.Headless.GraphTypes
                         case 10:
                             itemProductInfo.ItemSubType = ItemSubType.Ring; break;
                     }
+
+                    List<IProductInfo> holds = new List<IProductInfo>();
+                    holds.Add(itemProductInfo);
+
+                    ActionBase action = new BuyProduct
+                    {
+                        AvatarAddress = avatarAddress,
+                        ProductInfos = holds,
+                    };
+                    return Encode(context, action);
+                }
+            );
+            Field<NonNullGraphType<ByteStringType>>(
+                "buyFungibleAsset",
+                arguments: new QueryArguments(
+                    new QueryArgument<NonNullGraphType<AddressType>>
+                    {
+                        Name = "avatarAddress",
+                        Description = "The avatar address to enhance rune."
+                    },
+                    new QueryArgument<NonNullGraphType<StringGraphType>>
+                    {
+                        Name = "productId",
+                        Description = "GUID in string of item"
+                    },
+                    new QueryArgument<NonNullGraphType<AddressType>>
+                    {
+                        Name = "sellAvatarAddress",
+                        Description = "The avatar address to enhance rune."
+                    },
+                    new QueryArgument<NonNullGraphType<IntGraphType>>
+                    {
+                        Name = "price",
+                        Description = "The avatar address to enhance rune."
+                    },
+                    new QueryArgument<NonNullGraphType<AddressType>>
+                    {
+                        Name = "sellAgentAddress",
+                        Description = "The avatar address to enhance rune."
+                    },
+                    new QueryArgument<NonNullGraphType<IntGraphType>>
+                    {
+                        Name = "chain",
+                        Description = "chain"
+                    }),
+                resolve: context =>
+                {
+                    var avatarAddress = context.GetArgument<Address>("avatarAddress");
+                    var productId = context.GetArgument<string>("productId");
+                    var price = context.GetArgument<int>("price");
+                    var sellAvatarAddress = context.GetArgument<Address>("sellAvatarAddress");
+                    var sellAgentAddress = context.GetArgument<Address>("sellAgentAddress");
+                    var chain = context.GetArgument<int>("chain");
+
+                    Currency NCG = new Currency();
+                    FavProductInfo itemProductInfo = new FavProductInfo();
+                    itemProductInfo.AvatarAddress = avatarAddress;
+
+                    if (chain == 0)
+                    {
+            #pragma warning disable CS0618 // Type or member is obsolete
+                        Currency NCGTemp =
+                        Currency.Legacy(
+                            "NCG",
+                            2,
+                            ImmutableHashSet.Create(new Address("0x47D082a115c63E7b58B1532d20E631538eaFADde"))
+                        );
+                        NCG = NCGTemp;
+            #pragma warning restore CS0618 // Type or member is obsolete
+                    }
+                    else if (chain == 1)
+                    {
+            #pragma warning disable CS0618 // Type or member is obsolete
+                        Currency NCGTemp = Currency.Legacy("NCG", 2, null);
+                        NCG = NCGTemp;
+            #pragma warning restore CS0618 // Type or member is obsolete
+                    }
+                    itemProductInfo.Price = FungibleAssetValue.Parse(NCG, price.ToString());
+                    itemProductInfo.ProductId = Guid.Parse(productId);
+                    itemProductInfo.AgentAddress = sellAgentAddress;
+                    itemProductInfo.AvatarAddress = sellAvatarAddress;
+                    itemProductInfo.Type = ProductType.FungibleAssetValue;
 
                     List<IProductInfo> holds = new List<IProductInfo>();
                     holds.Add(itemProductInfo);
@@ -909,6 +993,28 @@ namespace NineChronicles.Headless.GraphTypes
                         ticket = ticketAmount,
                         runeInfos = runes
                     };                  
+
+                    return Codec.Encode(action.PlainValue);
+                }
+            );
+
+            Field<NonNullGraphType<ByteStringType>>(
+                name: "ClaimPatrol",
+                arguments: new QueryArguments(
+                    new QueryArgument<NonNullGraphType<AddressType>>
+                    {
+                        Name = "avatarAddress",
+                        Description = "Avatar address."
+                    }
+                ),
+                resolve: context =>
+                {
+                    Address myAvatarAddress = context.GetArgument<Address>("avatarAddress");
+
+                    ActionBase action = new ClaimPatrolReward
+                    {
+                        AvatarAddress = myAvatarAddress,
+                    };
 
                     return Codec.Encode(action.PlainValue);
                 }
