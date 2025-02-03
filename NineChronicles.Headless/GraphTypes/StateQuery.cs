@@ -45,6 +45,7 @@ using Nekoyume.Action.Exceptions.AdventureBoss;
 using Nekoyume.Model.AdventureBoss;
 using Nekoyume.Action.AdventureBoss;
 using Nekoyume.Module.ValidatorDelegation;
+using Nekoyume.TableData.Event;
 
 namespace NineChronicles.Headless.GraphTypes
 {
@@ -1308,10 +1309,24 @@ namespace NineChronicles.Headless.GraphTypes
                 {
                     var avatarAddress = context.GetArgument<Address>("avatarAddress");
 
+                    var sheets = context.Source.WorldState.GetSheets(containItemSheet: true, sheetTypes: new[]
+                    {
+                        typeof(PatrolRewardSheet)
+                    });
+                    
+                    var avatarState = context.Source.WorldState.GetAvatarState(avatarAddress, true, false, false);
+                    var avatarLevel = avatarState.level;
+                    var patrolRewardSheet = sheets.GetSheet<PatrolRewardSheet>();
+
                     context.Source.WorldState.TryGetPatrolRewardClaimedBlockIndex(avatarAddress, out var claimedBlockIndex);
 
-                    return claimedBlockIndex;
+#pragma warning disable CS8629 // Nullable value type may be null.
+                    var row = patrolRewardSheet.FindByLevel(avatarLevel, (long)context.Source.BlockIndex);
+#pragma warning restore CS8629 // Nullable value type may be null.
+
+                    return claimedBlockIndex + row.Interval;
                 });
+
             Field<NonNullGraphType<MeadPledgeType>>(
                 "pledge",
                 arguments: new QueryArguments(new QueryArgument<NonNullGraphType<AddressType>>
