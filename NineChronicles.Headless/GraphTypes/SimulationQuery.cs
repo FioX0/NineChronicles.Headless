@@ -761,7 +761,8 @@ namespace NineChronicles.Headless.GraphTypes
                 {
                     Address myAgentAddress = context.GetArgument<Address>("agentAddress");
                     Address myAvatarAddress = context.GetArgument<Address>("avatarAddress");
-                    var Foods = context.GetArgument<List<Guid>>("foodIds");
+                    List<Guid> FoodsList = new List<Guid>();
+
 
                     int simulationCount = context.GetArgument<int>("simulationCount");
 
@@ -937,7 +938,7 @@ namespace NineChronicles.Headless.GraphTypes
                                 floorId: floorRow.Id,
                                 random,
                                 avatarState,
-                                floorRow.Id == firstFloorId ? Foods : new List<Guid>(),
+                                FoodsList,
                                 runeStates,
                                 runeSlotState,
                                 floorRow,
