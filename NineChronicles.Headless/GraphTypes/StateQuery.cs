@@ -46,6 +46,9 @@ using Nekoyume.Model.AdventureBoss;
 using Nekoyume.Action.AdventureBoss;
 using Nekoyume.Module.ValidatorDelegation;
 using Nekoyume.TableData.Event;
+using Nekoyume.Model.Rune;
+using System.Text;
+using Org.BouncyCastle.Asn1.X509;
 
 namespace NineChronicles.Headless.GraphTypes
 {
@@ -175,8 +178,6 @@ namespace NineChronicles.Headless.GraphTypes
                     var blockindex = context.GetArgument<long>("blockindex");
                     var productsStateAddress = ProductsState.DeriveAddress(avatarAddress);
                     var productsState = new ProductsState((List) context.Source.WorldState.GetLegacyState(productsStateAddress));
-
-
 
                     foreach(var productentry in productsState.ProductIds)
                     {
@@ -1452,6 +1453,175 @@ namespace NineChronicles.Headless.GraphTypes
                     }
 
                     return result;
+                }
+            );
+
+            Field<NonNullGraphType<IntGraphType>>(
+                name: "testRuneMats",
+                arguments: new QueryArguments(
+                    new QueryArgument<NonNullGraphType<AddressType>>
+                    {
+                        Name = "avatarAddress",
+                        Description = "Avatar address."
+                    },
+                    new QueryArgument<NonNullGraphType<IntGraphType>>
+                    {
+                        Name = "runeId",
+                        Description = "Rune ID"
+                    }
+                ),
+                resolve: context =>
+                {
+                    Address myAvatarAddress = context.GetArgument<Address>("avatarAddress");
+                    var RuneId = context.GetArgument<int>("runeId");
+
+                    var blockIndex = context.Source.BlockIndex!.Value;
+
+                    var sheets = context.Source.WorldState.GetSheets(
+                        sheetTypes: new[]
+                        {
+                            typeof(ArenaSheet),
+                            typeof(RuneSheet),
+                            typeof(RuneListSheet),
+                            typeof(RuneCostSheet),
+                            typeof(RuneLevelBonusSheet),
+                        });
+
+                    var allRuneState = context.Source.WorldState.GetRuneState(myAvatarAddress, out _);
+
+                    RuneState runeState;
+                    if (allRuneState.TryGetRuneState(RuneId, out var rs))
+                    {
+                        runeState = rs;
+                    }
+                    else
+                    {
+                        runeState = new RuneState(RuneId);
+                        allRuneState.AddRuneState(runeState);
+                    }
+
+                    var runeSheet = sheets.GetSheet<RuneSheet>();
+                    if (!runeSheet.TryGetValue(runeState.RuneId, out var runeRow))
+                    {
+                        throw new RuneNotFoundException(
+                            $"[{nameof(RuneEnhancement)}] my avatar address : {myAvatarAddress}");
+                    }
+
+                    // Check final balance
+#pragma warning disable CS0618 // Type or member is obsolete
+                    var runeCurrency = Currency.Legacy(runeRow.Ticker, 0, minters: null);
+#pragma warning restore CS0618 // Type or member is obsolete
+                    var runeBalance = context.Source.WorldState.GetBalance(myAvatarAddress, runeCurrency);
+
+                    Console.WriteLine(runeRow.Id);
+                    return runeBalance.MajorUnit+1;
+                }
+            );
+
+            Field<NonNullGraphType<ByteStringType>>(
+                "registerFungibleAsset",
+                arguments: new QueryArguments(
+                    new QueryArgument<NonNullGraphType<AddressType>>
+                    {
+                        Name = "avatarAddress",
+                        Description = "The avatar address to enhance rune."
+                    },
+                    new QueryArgument<NonNullGraphType<IntGraphType>>
+                    {
+                        Name = "price",
+                        Description = "GUID in string of item"
+                    },
+                    new QueryArgument<NonNullGraphType<IntGraphType>>
+                    {
+                        Name = "runeId",
+                        Description = "GUID in string of item"
+                    },
+                    new QueryArgument<NonNullGraphType<IntGraphType>>
+                    {
+                        Name = "chain",
+                        Description = "chain of register",
+                        DefaultValue = 0
+                    }),
+                resolve: context =>
+                {
+                    var avatarAddress = context.GetArgument<Address>("avatarAddress");
+                    var price = context.GetArgument<int>("price");
+                    var chain = context.GetArgument<int>("chain");
+
+                    var RuneId = context.GetArgument<int>("runeId");
+
+                    var sheets = context.Source.WorldState.GetSheets(
+                        sheetTypes: new[]
+                        {
+                                        typeof(ArenaSheet),
+                                        typeof(RuneSheet),
+                                        typeof(RuneListSheet),
+                                        typeof(RuneCostSheet),
+                                        typeof(RuneLevelBonusSheet),
+                        });
+
+                    var allRuneState = context.Source.WorldState.GetRuneState(avatarAddress, out _);
+
+                    RuneState runeState;
+                    if (allRuneState.TryGetRuneState(RuneId, out var rs))
+                    {
+                        runeState = rs;
+                    }
+                    else
+                    {
+                        runeState = new RuneState(RuneId);
+                        allRuneState.AddRuneState(runeState);
+                    }
+
+                    var runeSheet = sheets.GetSheet<RuneSheet>();
+                    if (!runeSheet.TryGetValue(runeState.RuneId, out var runeRow))
+                    {
+                        throw new RuneNotFoundException(
+                            $"[{nameof(RuneEnhancement)}] my avatar address : {avatarAddress}");
+                    }
+
+                    // Check final balance
+            #pragma warning disable CS0618 // Type or member is obsolete
+                    var runeCurrency = Currency.Legacy(runeRow.Ticker, 0, minters: null);
+
+                    Currency NCG = new Currency();
+                    AssetInfo AssetInfos = new AssetInfo();
+                    AssetInfos.AvatarAddress = avatarAddress;
+
+                    if (chain == 0)
+                    {
+            #pragma warning disable CS0618 // Type or member is obsolete
+                        Currency NCGTemp =
+                        Currency.Legacy(
+                            "NCG",
+                            2,
+                            ImmutableHashSet.Create(new Address("0x47D082a115c63E7b58B1532d20E631538eaFADde"))
+                        );
+                        NCG = NCGTemp;
+            #pragma warning restore CS0618 // Type or member is obsolete
+                    }
+                    else if (chain == 1)
+                    {
+            #pragma warning disable CS0618 // Type or member is obsolete
+                        Currency NCGTemp = Currency.Legacy("NCG", 2, null);
+                        NCG = NCGTemp;
+            #pragma warning restore CS0618 // Type or member is obsolete
+                    }
+
+                    AssetInfos.Price = FungibleAssetValue.Parse(NCG, price.ToString());
+                    AssetInfos.Type = Nekoyume.Model.Market.ProductType.FungibleAssetValue;
+                    AssetInfos.Asset = FungibleAssetValue.Parse(runeCurrency, "10");
+
+                    List<IRegisterInfo> holds = new List<IRegisterInfo>();
+                    holds.Add(AssetInfos);
+
+                    ActionBase action = new RegisterProduct
+                    {
+                        AvatarAddress = avatarAddress,
+                        RegisterInfos = holds,
+                        ChargeAp = true,
+                    };
+                    return _codec.Encode(action.PlainValue);
                 }
             );
 
