@@ -49,6 +49,7 @@ using Nekoyume.TableData.Event;
 using Nekoyume.Model.Rune;
 using System.Text;
 using Org.BouncyCastle.Asn1.X509;
+using GraphQLParser;
 
 namespace NineChronicles.Headless.GraphTypes
 {
@@ -1255,6 +1256,76 @@ namespace NineChronicles.Headless.GraphTypes
                         round = weekId,
                         ticket = 1,
                         runeInfos = myRuneSlotInfos
+                    };
+
+                    return _codec.Encode(action.PlainValue);
+                }
+            );
+
+            Field<NonNullGraphType<ByteStringType>>(
+                name: "BattleArenaRevamp",
+                arguments: new QueryArguments(
+                    new QueryArgument<NonNullGraphType<AddressType>>
+                    {
+                        Name = "avatarAddress",
+                        Description = "Avatar address."
+                    },
+                    new QueryArgument<NonNullGraphType<AddressType>>
+                    {
+                        Name = "enemyAvatarAddress",
+                        Description = "Enemy Avatar address."
+                    },
+                    new QueryArgument<NonNullGraphType<StringGraphType>>
+                    {
+                        Name = "memo",
+                        Description = "memo"
+                    }
+                ),
+                resolve: context =>
+                {
+                    Address myAvatarAddress = context.GetArgument<Address>("avatarAddress");
+                    Address enemyAvatarAddress = context.GetArgument<Address>("enemyAvatarAddress");
+                    string memoToken = context.GetArgument<string>("memo");
+                    
+                    var blockIndex = context.Source.BlockIndex!.Value;
+
+                    var myAvatar = context.Source.WorldState.GetAvatarState(myAvatarAddress);
+                    var myArenaAvatarStateAdr = ArenaAvatarState.DeriveAddress(myAvatarAddress);
+                    if (!context.Source.WorldState.TryGetArenaAvatarState(myArenaAvatarStateAdr, out var myArenaAvatarState))
+                    {
+                        throw new ArenaAvatarStateNotFoundException(
+                            $"[{nameof(BattleArena)}] my avatar address : {myAvatarAddress}");
+                    }
+                    var myAvatarEquipments = myAvatar.inventory.Equipments;
+                    var myAvatarCostumes = myAvatar.inventory.Costumes;
+                    List<Guid> myArenaEquipementList = myAvatarEquipments.Where(f=>myArenaAvatarState.Equipments.Contains(f.ItemId)).Select(n => n.ItemId).ToList();
+                    List<Guid> myArenaCostumeList = myAvatarCostumes.Where(f=>myArenaAvatarState.Costumes.Contains(f.ItemId)).Select(n => n.ItemId).ToList();
+
+                    var myRuneSlotStateAddress = RuneSlotState.DeriveAddress(myAvatarAddress, BattleType.Arena);
+                    var myRuneSlotState = context.Source.WorldState.TryGetLegacyState(myRuneSlotStateAddress, out List myRawRuneSlotState)
+                        ? new RuneSlotState(myRawRuneSlotState)
+                        : new RuneSlotState(BattleType.Arena);
+
+                    var myRuneStates = new List<RuneState>();
+                    var myRuneSlotInfos = myRuneSlotState.GetEquippedRuneSlotInfos();
+                    foreach (var address in myRuneSlotInfos.Select(info => RuneState.DeriveAddress(myArenaAvatarStateAdr, info.RuneId)))
+                    {
+                        if (context.Source.WorldState.TryGetLegacyState(address, out List rawRuneState))
+                        {
+                            myRuneStates.Add(new RuneState(rawRuneState));
+                        }
+                    }
+
+                    ActionBase action = new Nekoyume.Action.Arena.Battle
+                    {
+                        myAvatarAddress = myAvatarAddress,
+                        enemyAvatarAddress = enemyAvatarAddress,
+                        costumes = myArenaCostumeList,
+                        equipments = myArenaEquipementList,
+                        runeInfos = myRuneSlotInfos,
+                        chargeAp = true,
+                        memo = memoToken,
+                        arenaProvider = Nekoyume.Action.Arena.ArenaProvider.PLANETARIUM
                     };
 
                     return _codec.Encode(action.PlainValue);
