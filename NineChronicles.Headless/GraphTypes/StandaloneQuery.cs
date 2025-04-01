@@ -1,43 +1,50 @@
 #nullable enable
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Collections.Immutable;
+using System.Diagnostics;
 using System.Linq;
+using System.Security.Cryptography;
+using System.Text;
 using Bencodex;
 using Bencodex.Types;
 using GraphQL;
 using GraphQL.Types;
 using Lib9c;
+using Lib9c.ActionEvaluatorCommonComponents;
 using Libplanet.Action;
 using Libplanet.Action.State;
 using Libplanet.Blockchain;
 using Libplanet.Common;
 using Libplanet.Crypto;
 using Libplanet.Explorer.GraphTypes;
+using Libplanet.KeyStore;
 using Libplanet.Types.Assets;
 using Libplanet.Types.Blocks;
 using Libplanet.Types.Tx;
 using Microsoft.Extensions.Configuration;
 using Nekoyume;
 using Nekoyume.Action;
+using Nekoyume.Arena;
+using Nekoyume.Battle;
 using Nekoyume.Extensions;
+using Nekoyume.Helper;
 using Nekoyume.Model;
 using Nekoyume.Model.Arena;
+using Nekoyume.Model.BattleStatus.Arena;
 using Nekoyume.Model.EnumType;
 using Nekoyume.Model.Stat;
 using Nekoyume.Model.State;
 using Nekoyume.Module;
 using Nekoyume.TableData;
 using Nekoyume.TableData.Rune;
-using NineChronicles.Headless.GraphTypes.States;
 using NineChronicles.Headless.GraphTypes.Diff;
-using System.Security.Cryptography;
-using Libplanet.KeyStore;
+using NineChronicles.Headless.GraphTypes.States;
 using NineChronicles.Headless.Repositories.BlockChain;
 using NineChronicles.Headless.Repositories.StateTrie;
 using NineChronicles.Headless.Repositories.Transaction;
 using NineChronicles.Headless.Repositories.WorldState;
+using Serilog;
 using static NineChronicles.Headless.NCActionUtils;
 using Block = NineChronicles.Headless.Domain.Model.BlockChain.Block;
 
@@ -647,6 +654,7 @@ namespace NineChronicles.Headless.GraphTypes
                 }),
                 resolve: context =>
                 {
+                    var sw = Stopwatch.StartNew();
                     var transactionId = context.GetArgument<TxId>("transactionId");
 
                     if (!(standaloneContext.Store is { } store))
@@ -665,11 +673,11 @@ namespace NineChronicles.Headless.GraphTypes
                     {
                         throw new InvalidOperationException("Action is null.");
                     }
-                    if (action.GetType() != typeof(BattleArena))
+                    if (action.GetType() != typeof(Nekoyume.Action.Arena.Battle))
                     {
                         throw new InvalidOperationException("Wrong Transaction Type, please choose a BattleArena action");
                     }
-                    var innerAction = action as BattleArena;
+                    var innerAction = action as Nekoyume.Action.Arena.Battle;
                     if (innerAction == null)
                     {
                         throw new InvalidOperationException("Inner action is null");
@@ -680,6 +688,13 @@ namespace NineChronicles.Headless.GraphTypes
                     {
                         throw new InvalidOperationException("Block Hash is null");
                     }
+
+                    var block = store.GetBlock((BlockHash)blockHash);
+                    if (block == null)
+                    {
+                        throw new InvalidOperationException("Block is null");
+                    }
+
                     var digest = store.GetBlockDigest(blockHash.Value);
                     if (digest == null)
                     {
@@ -711,7 +726,6 @@ namespace NineChronicles.Headless.GraphTypes
                     ^ BitConverter.ToInt32(hashedSignature, 0);
 
                     var random = new LocalRandom(seed);
-                    var simulator = new Nekoyume.Arena.ArenaSimulator(random, 5);
 
                     var previousHash = header.PreviousHash;
                     if (!(previousHash is BlockHash))
@@ -720,115 +734,393 @@ namespace NineChronicles.Headless.GraphTypes
                     }
                     var accountState = chain.GetWorldState((BlockHash)previousHash);
 
-                    var sheets = accountState.GetSheets(containArenaSimulatorSheets: true, sheetTypes: new[]
-                    {
-                            typeof(ArenaSheet),
-                            typeof(ItemRequirementSheet),
-                            typeof(EquipmentItemRecipeSheet),
-                            typeof(EquipmentItemSubRecipeSheetV2),
-                            typeof(EquipmentItemOptionSheet),
-                            typeof(MaterialItemSheet),
-                            typeof(RuneListSheet),
-                            typeof(CollectionSheet),
-                            typeof(BuffLimitSheet),
-                            typeof(RuneLevelBonusSheet),
-                            typeof(BuffLinkSheet),
-                    });
-
-
                     var myAvatarAddress = innerAction.myAvatarAddress;
+
+                    var myAgentAddress = transaction.Signer;
 
                     var myArenaAvatarStateAdr = ArenaAvatarState.DeriveAddress(myAvatarAddress);
                     var enemyAvatarAddress = innerAction.enemyAvatarAddress;
 
                     var enemyArenaAvatarStateAdr = ArenaAvatarState.DeriveAddress(enemyAvatarAddress);
 
-                    if (!accountState.TryGetArenaAvatarState(myArenaAvatarStateAdr, out var myArenaAvatarState))
-                    {
-                        throw new ArenaAvatarStateNotFoundException(
-                            $"[{nameof(BattleArena)}] my avatar address : {myAvatarAddress}");
-                    }
 
-                    if (!accountState.TryGetArenaAvatarState(enemyArenaAvatarStateAdr, out var enemyArenaAvatarState))
-                    {
-                        throw new ArenaAvatarStateNotFoundException(
-                            $"[{nameof(BattleArena)}] my avatar address : {enemyAvatarAddress}");
-                    }
+                    var addressesHex = GetSignerAndOtherAddressesHex(
+                        myAgentAddress,
+                        myAvatarAddress,
+                        enemyAvatarAddress
+                    );
 
-                    // update arena avatar state
-                    myArenaAvatarState.UpdateEquipment(innerAction.equipments);
-                    myArenaAvatarState.UpdateCostumes(innerAction.costumes);
+                    var myAvatarState = MeasureAndLog(
+                        "Validate and get avatar state",
+                        sw,
+                        () => ValidateAndGetMyAvatarState(accountState, myAgentAddress, myAvatarAddress, enemyAvatarAddress)
+                    );
 
-                    var ItemSlotStateAddress = ItemSlotState.DeriveAddress(myAvatarAddress, BattleType.Arena);
-                    var myItemSlotState = accountState.TryGetLegacyState(ItemSlotStateAddress, out List rawItemSlotState)
-                        ? new ItemSlotState(rawItemSlotState)
-                        : new ItemSlotState(BattleType.Arena);
+                    var collectionStates = MeasureAndLog(
+                        "Get collection states",
+                        sw,
+                        () => accountState.GetCollectionStates(new[] { myAvatarAddress, enemyAvatarAddress })
+                    );
 
-                    var AvatarState = accountState.GetAvatarState(myAvatarAddress);
-                    var myRuneSlotStateAddress = RuneSlotState.DeriveAddress(myAvatarAddress, BattleType.Arena);
-                    var myRuneSlotState = accountState.TryGetLegacyState(myRuneSlotStateAddress, out List myRawRuneSlotState)
-                        ? new RuneSlotState(myRawRuneSlotState)
-                        : new RuneSlotState(BattleType.Arena);
-                    var myRuneStates = accountState.GetRuneState(myAvatarAddress, out var migrateRequired);
+                    var gameConfigState = MeasureAndLog(
+                        "Load gameConfig",
+                        sw,
+                        () => accountState.GetGameConfigState()
+                    );
 
-                    // simulate
-                    // get enemy equipped items
-                    var enemyItemSlotStateAddress = ItemSlotState.DeriveAddress(enemyAvatarAddress, BattleType.Arena);
-                    var enemyItemSlotState = accountState.TryGetLegacyState(enemyItemSlotStateAddress, out List rawEnemyItemSlotState)
-                        ? new ItemSlotState(rawEnemyItemSlotState)
-                        : new ItemSlotState(BattleType.Arena);
+                    var sheets = MeasureAndLog(
+                        "Load sheets",
+                        sw,
+                        () => LoadSheetsArenaBattle(accountState, collectionStates.Any())
+                    );
 
-                    var enemyAvatarState = accountState.GetEnemyAvatarState(enemyAvatarAddress);
-                    var enemyRuneSlotStateAddress = RuneSlotState.DeriveAddress(enemyAvatarAddress, BattleType.Arena);
-                    var enemyRuneSlotState = accountState.TryGetLegacyState(enemyRuneSlotStateAddress, out List enemyRawRuneSlotState)
-                        ? new RuneSlotState(enemyRawRuneSlotState)
-                        : new RuneSlotState(BattleType.Arena);
-
-                    var enemyRuneStates = accountState.GetRuneState(enemyAvatarAddress, out _);
-
-                    var collectionStates = accountState.GetCollectionStates(new[] { myAvatarAddress, enemyAvatarAddress });
-                    var collectionExist = collectionStates.Count > 0;
-
-                    var modifiers = new Dictionary<Address, List<StatModifier>>
+                    var collectionModifiers = new Dictionary<Address, List<StatModifier>>
                     {
                         [myAvatarAddress] = new(),
                         [enemyAvatarAddress] = new(),
                     };
-                    if (collectionExist)
+
+                    if (collectionStates.Any())
                     {
                         var collectionSheet = sheets.GetSheet<CollectionSheet>();
-                        #pragma warning disable LAA1002
                         foreach (var (address, state) in collectionStates)
-                        #pragma warning restore LAA1002
                         {
-                            var modifier = modifiers[address];
-                            foreach (var collectionId in state.Ids)
-                            {
-                                modifier.AddRange(collectionSheet[collectionId].StatModifiers);
-                            }
+                            collectionModifiers[address] = state.GetModifiers(collectionSheet);
                         }
                     }
-                    var deBuffLimitSheet = sheets.GetSheet<BuffLimitSheet>();
 
-                    ArenaPlayerDigest ExtraMyArenaPlayerDigest = new ArenaPlayerDigest(
-                        AvatarState,
-                        myItemSlotState.Equipments,
-                        myItemSlotState.Costumes,
-                        myRuneStates,
-                        myRuneSlotState
+                    var myLoadout = MeasureAndLog(
+                        "Get my spec",
+                        sw,
+                        () =>
+                            PrepareMyLoadout(
+                                accountState,
+                                sheets,
+                                myAvatarState,
+                                block.Index,
+                                addressesHex,
+                                gameConfigState,
+                                collectionModifiers,
+                                myAvatarAddress
+                            )
+                    );
+                    var (updatedStates, myItemSlotState, myRuneSlotState, myRuneStates, myCp) = myLoadout;
+
+                    var enemyLoadout = MeasureAndLog(
+                        "Get enemy spec",
+                        sw,
+                        () => PrepareEnemyLoadout(accountState, enemyAvatarAddress)
+                    );
+
+                    var resultLog = MeasureAndLog(
+                        "Simulate battle",
+                        sw,
+                        () =>
+                            Simulate(
+                                accountState,
+                                sheets,
+                                myAvatarState,
+                                random,
+                                gameConfigState,
+                                collectionModifiers,
+                                (myItemSlotState, myRuneSlotState, myRuneStates),
+                                enemyLoadout,
+                                myAvatarAddress,
+                                enemyAvatarAddress
+                            )
                         );
-                    ArenaPlayerDigest ExtraEnemyArenaPlayerDigest = new ArenaPlayerDigest(
-                        enemyAvatarState,
-                        enemyItemSlotState.Equipments,
-                        enemyItemSlotState.Costumes,
-                        enemyRuneStates,
-                        enemyRuneSlotState
-                        );
-                    var arenaSheets = sheets.GetArenaSimulatorSheets();
-                    var buffLinkSheet = sheets.GetSheet<BuffLinkSheet>();
-                    var log = simulator.Simulate(ExtraMyArenaPlayerDigest, ExtraEnemyArenaPlayerDigest, arenaSheets, modifiers[myAvatarAddress], modifiers[enemyAvatarAddress], deBuffLimitSheet, buffLinkSheet, true);
-                    return log.Events;
+
+                    return resultLog.Events;
                 }
+            );
+        }
+
+        private T MeasureAndLog<T>(string process, Stopwatch stopwatch, Func<T> action)
+        {
+            stopwatch.Restart();
+            var result = action();
+            stopwatch.Stop();
+            Log.Verbose(
+                "{Process} completed in {Elapsed} ms",
+                process,
+                stopwatch.Elapsed.TotalMilliseconds
+            );
+            return result;
+        }
+        private Dictionary<Type, (Address address, ISheet sheet)> LoadSheetsArenaBattle(
+            IWorldState states,
+            bool collectionExist
+        )
+        {
+            var sheetTypes = new List<Type>
+            {
+                typeof(ArenaSheet),
+                typeof(ItemRequirementSheet),
+                typeof(EquipmentItemRecipeSheet),
+                typeof(EquipmentItemSubRecipeSheetV2),
+                typeof(EquipmentItemOptionSheet),
+                typeof(MaterialItemSheet),
+                typeof(RuneListSheet),
+                typeof(RuneLevelBonusSheet),
+                typeof(BuffLimitSheet),
+                typeof(BuffLinkSheet),
+                typeof(CharacterSheet),
+                typeof(CostumeStatSheet),
+            };
+
+            if (collectionExist)
+            {
+                sheetTypes.Add(typeof(CollectionSheet));
+            }
+
+            var sheets = states.GetSheets(
+                containArenaSimulatorSheets: true,
+                sheetTypes: sheetTypes
+            );
+            return sheets;
+        }
+
+        private AvatarState ValidateAndGetMyAvatarState(IWorldState states, Address signer, Address myAvatarAddress, Address enemyAvatarAddress)
+        {
+            if (myAvatarAddress.Equals(enemyAvatarAddress))
+            {
+                throw new InvalidAddressException("Battle initiated with identical addresses.");
+            }
+
+            if (!states.TryGetAvatarState(signer, myAvatarAddress, out var myAvatarState))
+            {
+                throw new FailedLoadStateException("Failed to load avatar state for signer.");
+            }
+
+            return myAvatarState;
+        }
+
+        protected string GetSignerAndOtherAddressesHex(Address agentAddress, params Address[] addresses)
+        {
+            StringBuilder sb = new StringBuilder($"[{agentAddress.ToHex()}");
+
+            foreach (Address address in addresses)
+            {
+                sb.Append($", {address.ToHex()}");
+            }
+
+            sb.Append("]");
+            return sb.ToString();
+        }
+
+        private (
+            IWorldState UpdatedStates,
+            ItemSlotState ItemSlotState,
+            RuneSlotState RuneSlotState,
+            AllRuneState RuneStates,
+            int Cp
+        ) PrepareMyLoadout(
+            IWorldState states,
+            Dictionary<Type, (Address address, ISheet sheet)> sheets,
+            AvatarState myAvatarState,
+            long? blockIndex,
+            string addressesHex,
+            GameConfigState gameConfigState,
+            Dictionary<Address, List<StatModifier>> collectionModifiers,
+            Address myAvatarAddress
+        )
+        {
+
+            var myArenaAvatarStateAdr = ArenaAvatarState.DeriveAddress(myAvatarAddress);
+            if (!states.TryGetArenaAvatarState(myArenaAvatarStateAdr, out var myArenaAvatarState))
+            {
+                throw new ArenaAvatarStateNotFoundException(
+                $"[{nameof(BattleArena)}] my avatar address : {myAvatarAddress}");
+            }
+
+            var myAvatarEquipments = myAvatarState.inventory.Equipments;
+            var myAvatarCostumes = myAvatarState.inventory.Costumes;
+            List<Guid> equipments = myAvatarEquipments.Where(f=>myArenaAvatarState.Equipments.Contains(f.ItemId)).Select(n => n.ItemId).ToList();
+            List<Guid> costumes = myAvatarCostumes.Where(f=>myArenaAvatarState.Costumes.Contains(f.ItemId)).Select(n => n.ItemId).ToList();
+
+            if(blockIndex is null)
+            {
+                throw new InvalidAddressException("BlockIndex is NULL.");
+            }
+
+            long blockIndexF = (long)blockIndex;
+
+            var (equipmentItems, costumeItems) = myAvatarState.ValidEquipmentAndCostumeV2(
+                costumes,
+                equipments,
+                sheets.GetSheet<ItemRequirementSheet>(),
+                sheets.GetSheet<EquipmentItemRecipeSheet>(),
+                sheets.GetSheet<EquipmentItemSubRecipeSheetV2>(),
+                sheets.GetSheet<EquipmentItemOptionSheet>(),
+                blockIndexF,
+                addressesHex,
+                gameConfigState
+            );
+
+            var myRuneSlotStateAddress = RuneSlotState.DeriveAddress(
+                myAvatarAddress,
+                BattleType.Arena
+            );
+            var myRuneSlotState = states.TryGetLegacyState(
+                myRuneSlotStateAddress,
+                out List rawRuneSlotState
+            )
+                ? new RuneSlotState(rawRuneSlotState)
+                : new RuneSlotState(BattleType.Arena);
+
+            var runeListSheet = sheets.GetSheet<RuneListSheet>();
+
+            var myItemSlotStateAddress = ItemSlotState.DeriveAddress(
+                myAvatarAddress,
+                BattleType.Arena
+            );
+            var myItemSlotState = states.TryGetLegacyState(
+                myItemSlotStateAddress,
+                out List rawItemSlotState
+            )
+                ? new ItemSlotState(rawItemSlotState)
+                : new ItemSlotState(BattleType.Arena);
+
+            myItemSlotState.UpdateEquipment(equipments);
+            myItemSlotState.UpdateCostumes(costumes);
+
+            var myRuneStates = states.GetRuneState(myAvatarAddress, out var migrateRequired);
+
+            var characterSheet = sheets.GetSheet<CharacterSheet>();
+            if (!characterSheet.TryGetValue(myAvatarState.characterId, out var myCharacterRow))
+            {
+                throw new SheetRowNotFoundException("CharacterSheet", myAvatarState.characterId);
+            }
+
+            var runeOptionSheet = sheets.GetSheet<RuneOptionSheet>();
+            var myRuneOptions = new List<RuneOptionSheet.Row.RuneOptionInfo>();
+            foreach (var runeInfo in myRuneSlotState.GetEquippedRuneSlotInfos())
+            {
+                if (!myRuneStates.TryGetRuneState(runeInfo.RuneId, out var runeState))
+                {
+                    continue;
+                }
+
+                if (!runeOptionSheet.TryGetValue(runeState.RuneId, out var optionRow))
+                {
+                    throw new SheetRowNotFoundException("RuneOptionSheet", runeState.RuneId);
+                }
+
+                if (!optionRow.LevelOptionMap.TryGetValue(runeState.Level, out var option))
+                {
+                    throw new SheetRowNotFoundException("RuneOptionSheet", runeState.Level);
+                }
+
+                myRuneOptions.Add(option);
+            }
+
+            var costumeStatSheet = sheets.GetSheet<CostumeStatSheet>();
+            var runeLevelBonusSheet = sheets.GetSheet<RuneLevelBonusSheet>();
+            var myRuneLevelBonus = RuneHelper.CalculateRuneLevelBonus(
+                myRuneStates,
+                runeListSheet,
+                runeLevelBonusSheet
+            );
+            var myCp = CPHelper.TotalCP(
+                equipmentItems,
+                costumeItems,
+                myRuneOptions,
+                myAvatarState.level,
+                myCharacterRow,
+                costumeStatSheet,
+                collectionModifiers[myAvatarAddress],
+                myRuneLevelBonus
+            );
+
+            return (states, myItemSlotState, myRuneSlotState, myRuneStates, myCp);
+        }
+
+        private (
+            ItemSlotState ItemSlotState,
+            RuneSlotState RuneSlotState,
+            AllRuneState RuneStates
+        ) PrepareEnemyLoadout(IWorldState states, Address enemyAvatarAddress)
+        {
+            var enemyItemSlotStateAddress = ItemSlotState.DeriveAddress(
+                enemyAvatarAddress,
+                BattleType.Arena
+            );
+            var enemyItemSlotState = states.TryGetLegacyState(
+                enemyItemSlotStateAddress,
+                out List rawEnemyItemSlotState
+            )
+                ? new ItemSlotState(rawEnemyItemSlotState)
+                : new ItemSlotState(BattleType.Arena);
+
+            var enemyRuneSlotStateAddress = RuneSlotState.DeriveAddress(
+                enemyAvatarAddress,
+                BattleType.Arena
+            );
+            var enemyRuneSlotState = states.TryGetLegacyState(
+                enemyRuneSlotStateAddress,
+                out List enemyRawRuneSlotState
+            )
+                ? new RuneSlotState(enemyRawRuneSlotState)
+                : new RuneSlotState(BattleType.Arena);
+
+            var enemyRuneStates = states.GetRuneState(enemyAvatarAddress, out _);
+
+            return (enemyItemSlotState, enemyRuneSlotState, enemyRuneStates);
+        }
+
+        private ArenaLog Simulate(
+            IWorldState states,
+            Dictionary<Type, (Address address, ISheet sheet)> sheets,
+            AvatarState myAvatarState,
+            IRandom random,
+            GameConfigState gameConfigState,
+            Dictionary<Address, List<StatModifier>> collectionModifiers,
+            (
+                ItemSlotState ItemSlotState,
+                RuneSlotState RuneSlotState,
+                AllRuneState RuneStates
+            ) mySpec,
+            (
+                ItemSlotState ItemSlotState,
+                RuneSlotState RuneSlotState,
+                AllRuneState RuneStates
+            ) enemySpec,
+            Address myAvatarAddress,
+            Address enemyAvatarAddress
+        )
+        {
+            var myArenaPlayerDigest = new ArenaPlayerDigest(
+                myAvatarState,
+                mySpec.ItemSlotState.Equipments,
+                mySpec.ItemSlotState.Costumes,
+                mySpec.RuneStates,
+                mySpec.RuneSlotState
+            );
+            var enemyAvatarState = states.GetEnemyAvatarState(enemyAvatarAddress);
+            var enemyArenaPlayerDigest = new ArenaPlayerDigest(
+                enemyAvatarState,
+                enemySpec.ItemSlotState.Equipments,
+                enemySpec.ItemSlotState.Costumes,
+                enemySpec.RuneStates,
+                enemySpec.RuneSlotState
+            );
+
+            var buffLimitSheet = sheets.GetSheet<BuffLimitSheet>();
+            var buffLinkSheet = sheets.GetSheet<BuffLinkSheet>();
+            var simulator = new ArenaSimulator(
+                random,
+                5,
+                gameConfigState.ShatterStrikeMaxDamage
+            );
+            return simulator.Simulate(
+                myArenaPlayerDigest,
+                enemyArenaPlayerDigest,
+                sheets.GetArenaSimulatorSheets(),
+                collectionModifiers[myAvatarAddress],
+                collectionModifiers[enemyAvatarAddress],
+                buffLimitSheet,
+                buffLinkSheet,
+                true
             );
         }
     }
