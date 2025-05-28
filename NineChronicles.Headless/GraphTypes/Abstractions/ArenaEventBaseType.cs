@@ -47,7 +47,15 @@ namespace NineChronicles.Headless.GraphTypes.Abstractions
                         sb.AppendLine($"Arena Attack {arenaSkillEvent.GetType()}");
                         if (arenaSkillEvent is ArenaBuff arenaBuffEvent)
                         {
-                            sb.AppendLine($"Buff {arenaBuffEvent.SkillInfos.First().SkillCategory}");
+                            var hit = arenaBuffEvent.SkillInfos.First();
+                            if (hit.Buff is not null)
+                            {
+                                var customField = ((Nekoyume.Model.Buff.StatBuff)hit.Buff).CustomField;
+                                if(customField != null)
+                                {
+                                    sb.AppendLine($"Buff {arenaBuffEvent.SkillInfos.First().SkillCategory} Target: {(arenaBuffEvent.SkillInfos.First().Target.IsEnemy ? "Enemy " : "Player ")} Buff Power: {((Nekoyume.Model.Skill.SkillCustomField)customField).BuffValue}");
+                                }
+                            }
                         }
                         else
                         {
@@ -61,7 +69,7 @@ namespace NineChronicles.Headless.GraphTypes.Abstractions
                     }
                     else if (arenaEvent is ArenaTurnEnd arenaTurnEnd)
                     {
-                        sb.AppendLine($"Turn #: {arenaTurnEnd.TurnNumber}; Remaining HP: {arenaTurnEnd.Character.CurrentHP}");
+                        sb.AppendLine($"Turn #: {arenaTurnEnd.TurnNumber};");
                     }
                     else
                     {
