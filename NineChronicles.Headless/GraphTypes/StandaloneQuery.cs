@@ -644,6 +644,34 @@ namespace NineChronicles.Headless.GraphTypes
                 }
             );
 
+            Field<NonNullGraphType<ListGraphType<NonNullGraphType<BlockStartingTxNoncesType>>>>(
+                name: "blockStartingTxNoncesQuery",
+                description: "Query to get starting tx nonces from certain block.",
+                arguments: new QueryArguments(
+                    new QueryArgument<ByteStringType> { Name = "hash", Description = "The hash of the block used to fetch state from chain." },
+                    new QueryArgument<LongGraphType> { Name = "index", Description = "The index of the block used to fetch state from chain." }
+                ),
+                resolve: context =>
+                {
+                    var block = (context.GetArgument<byte[]?>("hash"), context.GetArgument<long?>("index")) switch
+                    {
+                        (not null, not null) => throw new ArgumentException(
+                            "Only one of 'hash' and 'index' must be given."),
+                        (null, { } index) => blockChainRepository.GetBlock(index),
+                        ({ } bytes, null) => blockChainRepository.GetBlock(new BlockHash(bytes)),
+                        (null, null) => blockChainRepository.GetTip(),
+                    };
+                    using var activity = ActivitySource.StartActivity("blockStartingTxNoncesQuery");
+                    return block.Transactions
+                        .GroupBy(tx => tx.Signer)
+                        .Select(group => (
+                            Signer: group.Key,
+                            Nonce: group.Min(tx => tx.Nonce)))
+                        .OrderBy(x => x.Signer)
+                        .ToArray();
+                }
+            );
+
             Field<ListGraphType<Abstractions.ArenaEventBaseType>>(
                 "arenaBattleData",
                 description: "All of the information to playback an arena battle.",
@@ -1122,6 +1150,8 @@ namespace NineChronicles.Headless.GraphTypes
                 buffLinkSheet,
                 true
             );
+
+           
         }
     }
 }
