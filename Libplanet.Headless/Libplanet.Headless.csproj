@@ -8,7 +8,7 @@
 
   <ItemGroup>
     <PackageReference Include="Libplanet.Explorer" Version="$(LibplanetVersion)" />
-    <PackageReference Include="Libplanet.Net" Version="$(LibplanetVersion)" />
+    <PackageReference Include="Libplanet.Net-CommunityEdition" Version="5.5.0" />
     <PackageReference Include="Libplanet.RocksDBStore" Version="$(LibplanetVersion)" />
     <PackageReference Include="Microsoft.Extensions.Hosting" Version="3.1.1" />
     <PackageReference Include="SonarAnalyzer.CSharp" Version="8.49.0.57237">
