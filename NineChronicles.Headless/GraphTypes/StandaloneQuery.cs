@@ -379,6 +379,94 @@ namespace NineChronicles.Headless.GraphTypes
                 }
             );
 
+            Field<ReplayResultType>(
+                name: "replayTransaction",
+                description: "Replicates ReplayCommand: given a transaction id, returns block info and random seed.",
+                arguments: new QueryArguments(
+                    new QueryArgument<NonNullGraphType<TxIdType>>
+                    {
+                        Name = "txId",
+                        Description = "Transaction id to replay."
+                    }
+                ),
+                resolve: context =>
+                {
+                    using var activity = ActivitySource.StartActivity("replayTransaction");
+
+                    var txId = context.GetArgument<TxId>("txId");
+
+                    if (standaloneContext.Store is null)
+                    {
+                        throw new ExecutionError("Store is not ready");
+                    }
+
+                    var store = standaloneContext.Store;
+                    var transaction = store.GetTransaction(txId);
+                    if (transaction is null)
+                    {
+                        throw new ExecutionError($"Transaction {txId} not found.");
+                    }
+
+                    var blockHash = store.GetFirstTxIdBlockHashIndex(txId);
+                    if (blockHash is null)
+                    {
+                        throw new ExecutionError($"Block containing transaction {txId} not found.");
+                    }
+
+                    var block = store.GetBlock(blockHash.Value);
+                    if (block is null)
+                    {
+                        throw new ExecutionError($"Block {blockHash} not found.");
+                    }
+
+                    var digest = store.GetBlockDigest(blockHash.Value);
+                    if (digest is null)
+                    {
+                        throw new ExecutionError($"Block digest for {blockHash} not found.");
+                    }
+
+                    var header = digest.Value.GetHeader();
+                    var preEvaluationHash = header.PreEvaluationHash;
+                    if (transaction.Signature is null)
+                    {
+                        throw new ExecutionError("Transaction signature is null.");
+                    }
+
+                    byte[] preEvaluationHashBytes = preEvaluationHash.ToByteArray();
+                    int randomSeed = ActionEvaluator.GenerateRandomSeed(preEvaluationHashBytes, transaction.Signature, 0);
+
+                    string previousState = string.Empty;
+                    string nextState = string.Empty;
+                    if (header.PreviousHash is { } prevHash)
+                    {
+                        var previousBlock = store.GetBlock(prevHash);
+                        if (previousBlock is { })
+                        {
+                            previousState = previousBlock.StateRootHash.ToString();
+                        }
+                    }
+
+                    // Next state is the current block's state root hash after processing
+                    nextState = block.StateRootHash.ToString();
+
+                    activity?
+                        .AddTag("TxId", txId.ToString())
+                        .AddTag("BlockHash", block.Hash.ToString());
+
+                    return new ReplayResult
+                    {
+                        BlockIndex = block.Index,
+                        BlockProtocolVersion = block.ProtocolVersion,
+                        Miner = block.Miner,
+                        PreviousState = previousState,
+                        NextState = nextState,
+                        RandomSeed = randomSeed,
+                        Signer = transaction.Signer,
+                        TxId = txId.ToString(),
+                    };
+                }
+            );
+
             Field<AddressType>(
                 name: "minerAddress",
                 description: "Address of current node.",
@@ -771,6 +859,8 @@ namespace NineChronicles.Headless.GraphTypes
 
                     var enemyArenaAvatarStateAdr = ArenaAvatarState.DeriveAddress(enemyAvatarAddress);
 
+                    var costumes = innerAction.costumes;
+                    var equipment = innerAction.equipments;
 
                     var addressesHex = GetSignerAndOtherAddressesHex(
                         myAgentAddress,
@@ -829,7 +919,9 @@ namespace NineChronicles.Headless.GraphTypes
                                 addressesHex,
                                 gameConfigState,
                                 collectionModifiers,
-                                myAvatarAddress
+                                myAvatarAddress,
+                                costumes,
+                                equipment
                             )
                     );
                     var (updatedStates, myItemSlotState, myRuneSlotState, myRuneStates, myCp) = myLoadout;
@@ -950,21 +1042,11 @@ namespace NineChronicles.Headless.GraphTypes
             string addressesHex,
             GameConfigState gameConfigState,
             Dictionary<Address, List<StatModifier>> collectionModifiers,
-            Address myAvatarAddress
+            Address myAvatarAddress,
+            List<Guid> costumes,
+            List<Guid> equipments
         )
         {
-
-            var myArenaAvatarStateAdr = ArenaAvatarState.DeriveAddress(myAvatarAddress);
-            if (!states.TryGetArenaAvatarState(myArenaAvatarStateAdr, out var myArenaAvatarState))
-            {
-                throw new ArenaAvatarStateNotFoundException(
-                $"[{nameof(BattleArena)}] my avatar address : {myAvatarAddress}");
-            }
-
-            var myAvatarEquipments = myAvatarState.inventory.Equipments;
-            var myAvatarCostumes = myAvatarState.inventory.Costumes;
-            List<Guid> equipments = myAvatarEquipments.Where(f=>myArenaAvatarState.Equipments.Contains(f.ItemId)).Select(n => n.ItemId).ToList();
-            List<Guid> costumes = myAvatarCostumes.Where(f=>myArenaAvatarState.Costumes.Contains(f.ItemId)).Select(n => n.ItemId).ToList();
 
             if(blockIndex is null)
             {
