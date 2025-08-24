@@ -11,7 +11,7 @@ public class ArenaParticipant
     public int WinScore;
     public int LoseScore;
     public int Ticket;
-    public readonly int Cp;
+    public readonly long Cp;
     public readonly int PortraitId;
     public readonly string NameWithHash;
     public readonly int Level;
@@ -24,7 +24,7 @@ public class ArenaParticipant
         int portraitId,
         int winScore,
         int loseScore,
-        int cp,
+        long cp,
         int ticket)
     {
         AvatarAddr = avatarAddr;

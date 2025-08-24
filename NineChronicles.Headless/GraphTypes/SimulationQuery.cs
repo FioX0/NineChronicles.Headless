@@ -1285,7 +1285,7 @@ namespace NineChronicles.Headless.GraphTypes
             ItemSlotState ItemSlotState,
             RuneSlotState RuneSlotState,
             AllRuneState RuneStates,
-            int Cp
+            long Cp
         ) PrepareMyLoadout(
             IWorldState states,
             Dictionary<Type, (Address address, ISheet sheet)> sheets,

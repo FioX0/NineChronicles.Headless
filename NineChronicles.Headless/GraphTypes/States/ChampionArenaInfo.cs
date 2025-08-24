@@ -18,7 +18,7 @@ namespace NineChronicles.Headless.GraphTypes.States
         public int Score { get; set; }
         public bool Active { get; set; }
         public int Rank { get; set; }
-        public int CP {get; set; }
+        public long CP {get; set; }
         public List<Guid>? Equipment { get; internal set; }
         public List<Guid>? Costumes { get; internal set; }
     }
