@@ -1,6 +1,8 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using Bencodex.Types;
+using GraphQL;
 using GraphQL.Types;
 using Libplanet.Crypto;
 using Libplanet.Types.Assets;
@@ -40,17 +42,22 @@ namespace NineChronicles.Headless.GraphTypes.States
                 nameof(AgentState.address),
                 description: "Address of agent.",
                 resolve: context => context.Source.AgentAddress);
-            Field<ListGraphType<NonNullGraphType<AvatarStateType>>>(
+            _ = Field<ListGraphType<NonNullGraphType<AvatarStateType>>>(
                 "avatarStates",
                 description: "List of avatar.",
                 resolve: context =>
                 {
+                    if (context.Source.BlockIndex is null)
+                    {
+                        return null;
+                    }
+
                     IReadOnlyList<Address> avatarAddresses = context.Source.GetAvatarAddresses();
                     return avatarAddresses.Select(avatarAddress => context.Source.WorldState.GetAvatarState(avatarAddress)).Select(
                         x => new AvatarStateType.AvatarStateContext(
                             x,
                             context.Source.WorldState,
-                            context.Source.BlockIndex!.Value,
+                            (long)context.Source.BlockIndex,
                             context.Source.StateMemoryCache));
                 });
             Field<NonNullGraphType<StringGraphType>>(
@@ -132,6 +139,27 @@ namespace NineChronicles.Headless.GraphTypes.States
             return questList
                 .OfType<TradeQuest>()
                 .Any(q => q.Complete);
+        }
+
+        private static bool IsFieldRequested(IResolveFieldContext<AgentStateContext> context, string fieldName)
+        {
+            // Check if the field is requested in the current selection set
+            var selectionSet = context.FieldAst?.SelectionSet;
+            if (selectionSet == null)
+            {
+                return false;
+            }
+
+            // Look for the field in the selection set
+            foreach (var selection in selectionSet.Selections)
+            {
+                if (selection is GraphQL.Language.AST.Field field && field.Name == fieldName)
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
     }
 }
