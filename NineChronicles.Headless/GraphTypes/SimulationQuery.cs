@@ -283,6 +283,22 @@ namespace NineChronicles.Headless.GraphTypes
                     {
                         Name = "simulationCount",
                         Description = "Amount of simulations, between 1 and 1000"
+                    },
+                    new QueryArgument<ListGraphType<GuidGraphType>>
+                    {
+                        Name = "equipmentIds",
+                        Description = "List of equipment ids to simulate."
+                    },
+                    new QueryArgument<ListGraphType<GuidGraphType>>
+                    {
+                        Name = "costumeIds",
+                        Description = "List of costume ids to simulate."
+                    },
+                    new QueryArgument<ListGraphType<NonNullGraphType<RuneSlotInfoInputType>>>
+                    {
+                        Name = "runeSlotInfos",
+                        DefaultValue = new List<RuneSlotInfo>(),
+                        Description = "List of rune slot infos to simulate."
                     }
                 ),
                 resolve: context =>
@@ -290,6 +306,9 @@ namespace NineChronicles.Headless.GraphTypes
                     Address myAvatarAddress = context.GetArgument<Address>("avatarAddress");
                     Address enemyAvatarAddress = context.GetArgument<Address>("enemyAvatarAddress");
                     int simulationCount = context.GetArgument<int>("simulationCount");
+                    List<Guid> equipmentIds = context.GetArgument<List<Guid>?>("equipmentIds") ?? new List<Guid>();
+                    List<Guid> costumeIds = context.GetArgument<List<Guid>?>("costumeIds") ?? new List<Guid>();
+                    List<RuneSlotInfo> runeSlotInfos = context.GetArgument<List<RuneSlotInfo>?>("runeSlotInfos") ?? new List<RuneSlotInfo>();
 
                     var sheets = context.Source.WorldState.GetSheets(containArenaSimulatorSheets: true, sheetTypes: new[]
                     {
@@ -338,117 +357,69 @@ namespace NineChronicles.Headless.GraphTypes
 
                     var gameConfigState = context.Source.WorldState.GetGameConfigState();
 
-                    //MyAvatar                
-                    var myArenaAvatarStateAdr = ArenaAvatarState.DeriveAddress(myAvatarAddress);
-                    if (!context.Source.WorldState.TryGetArenaAvatarState(myArenaAvatarStateAdr, out var myArenaAvatarState))
-                    {
-                        throw new ArenaAvatarStateNotFoundException(
-                            $"[{nameof(BattleArena)}] my avatar address : {myAvatarAddress}");
-                    }
-                    var myAvatarEquipments = myAvatar.inventory.Equipments;
-                    var myAvatarCostumes = myAvatar.inventory.Costumes;
-                    List<Guid> myArenaEquipementList = myAvatarEquipments.Where(f=>myArenaAvatarState.Equipments.Contains(f.ItemId)).Select(n => n.ItemId).ToList();
-                    List<Guid> myArenaCostumeList = myAvatarCostumes.Where(f=>myArenaAvatarState.Costumes.Contains(f.ItemId)).Select(n => n.ItemId).ToList();
-
-                    var myRuneSlotStateAddress = RuneSlotState.DeriveAddress(myAvatarAddress, BattleType.Arena);
-                    var myRuneSlotState = context.Source.WorldState.TryGetLegacyState(myRuneSlotStateAddress, out List myRawRuneSlotState)
-                        ? new RuneSlotState(myRawRuneSlotState)
-                        : new RuneSlotState(BattleType.Arena);
-                    var myRuneStates = context.Source.WorldState.GetRuneState(myAvatarAddress, out var migrateRequired);
-
-                    //Enemy
-                    var enemyArenaAvatarStateAdr = ArenaAvatarState.DeriveAddress(enemyAvatarAddress);
-                    if (!context.Source.WorldState.TryGetArenaAvatarState(enemyArenaAvatarStateAdr, out var enemyArenaAvatarState))
-                    {
-                        throw new ArenaAvatarStateNotFoundException(
-                            $"[{nameof(BattleArena)}] my avatar address : {enemyAvatarAddress}");
-                    }
-                    var enemyAvatarEquipments = enemyAvatar.inventory.Equipments;
-                    var enemyAvatarCostumes = enemyAvatar.inventory.Costumes;
-                    List<Guid> enemyArenaEquipementList = enemyAvatarEquipments.Where(f=>enemyArenaAvatarState.Equipments.Contains(f.ItemId)).Select(n => n.ItemId).ToList();
-                    List<Guid> enemyArenaCostumeList = enemyAvatarCostumes.Where(f=>enemyArenaAvatarState.Costumes.Contains(f.ItemId)).Select(n => n.ItemId).ToList();
-
-                    var enemyRuneSlotStateAddress = RuneSlotState.DeriveAddress(enemyAvatarAddress, BattleType.Arena);
-                    var enemyRuneSlotState = context.Source.WorldState.TryGetLegacyState(enemyRuneSlotStateAddress, out List enemyRawRuneSlotState)
-                        ? new RuneSlotState(enemyRawRuneSlotState)
-                        : new RuneSlotState(BattleType.Arena);
-
-                    var enemyRuneStates = context.Source.WorldState.GetRuneState(enemyAvatarAddress, out _);
-
-                    var myArenaPlayerDigest = new ArenaPlayerDigest(
-                        myAvatar,
-                        myArenaEquipementList,
-                        myArenaCostumeList,
-                        myRuneStates,
-                        myRuneSlotState
-                        );
-
-                    var enemyArenaPlayerDigest = new ArenaPlayerDigest(
-                        enemyAvatar,
-                        enemyArenaEquipementList,
-                        enemyArenaCostumeList,
-                        enemyRuneStates,
-                        enemyRuneSlotState
-                        );
-
+                    // Build collection modifiers like BattleArena (using state.GetModifiers)
+#pragma warning disable LAA1002
                     var collectionStates = context.Source.WorldState.GetCollectionStates(new[] { myAvatarAddress, enemyAvatarAddress });
-                    var collectionExist = collectionStates.Count > 0;
-
-                    var modifiers = new Dictionary<Address, List<StatModifier>>
+#pragma warning restore LAA1002
+                    var collectionModifiers = new Dictionary<Address, List<StatModifier>>
                     {
                         [myAvatarAddress] = new(),
                         [enemyAvatarAddress] = new(),
                     };
-                    if (collectionExist)
+                    if (collectionStates.Any())
                     {
                         var collectionSheet = sheets.GetSheet<CollectionSheet>();
-#pragma warning disable LAA1002
                         foreach (var (address, state) in collectionStates)
-#pragma warning restore LAA1002
                         {
-                            var modifier = modifiers[address];
-                            foreach (var collectionId in state.Ids)
-                            {
-                                modifier.AddRange(collectionSheet[collectionId].StatModifiers);
-                            }
+                            collectionModifiers[address] = state.GetModifiers(collectionSheet);
                         }
                     }
 
-                    var BuffLimitSheet = sheets.GetSheet<BuffLimitSheet>();
-                    System.Random rnd  =new System.Random();          
+                    // Prepare loadouts mirroring BattleArena
+                    var addressesHex = GetSignerAndOtherAddressesHex(myAvatarAddress, myAvatarAddress, enemyAvatarAddress);
+                    var myLoadout = PrepareMyLoadout(
+                        context.Source.WorldState,
+                        sheets,
+                        myAvatar,
+                        context.Source.BlockIndex,
+                        addressesHex,
+                        gameConfigState,
+                        collectionModifiers,
+                        myAvatarAddress,
+                        costumeIds,
+                        equipmentIds,
+                        runeSlotInfos
+                    );
+                    var (updatedStates, myItemSlotState, myRuneSlotState, myRuneStates, myCp) = myLoadout;
+                    var enemyLoadout = PrepareEnemyLoadout(context.Source.WorldState, enemyAvatarAddress);
 
+                    // Simulate battles using the same simulator path as BattleArena
+                    System.Random rnd  = new System.Random();
                     int win = 0;
                     int loss = 0;
-
                     List<ArenaSimulationResult> arenaResultsList = new List<ArenaSimulationResult>();
                     ArenaSimulationState arenaSimulationState = new ArenaSimulationState();
                     arenaSimulationState.blockIndex = context.Source.BlockIndex;
-                    var buffLinkSheet = sheets.GetSheet<BuffLinkSheet>();
-                    var buffLimitSheet = sheets.GetSheet<BuffLimitSheet>();
-                    
                     for (var i = 0; i < simulationCount; i++)
                     {
                         ArenaSimulationResult arenaResult = new ArenaSimulationResult();
                         arenaResult.seed = rnd.Next();
                         LocalRandom iRandom = new LocalRandom(arenaResult.seed);
 
-                        var simulator = new ArenaSimulator(
+                        var log = Simulate(
+                            context.Source.WorldState,
+                            sheets,
+                            myAvatar,
                             iRandom,
-                            5,
-                            gameConfigState.ShatterStrikeMaxDamage
+                            gameConfigState,
+                            collectionModifiers,
+                            (myItemSlotState, myRuneSlotState, myRuneStates),
+                            enemyLoadout,
+                            myAvatarAddress,
+                            enemyAvatarAddress
                         );
 
-                        var log = simulator.Simulate(
-                            myArenaPlayerDigest,
-                            enemyArenaPlayerDigest,
-                            arenaSheets,
-                            modifiers[myAvatarAddress],
-                            modifiers[enemyAvatarAddress],
-                            BuffLimitSheet,
-                            buffLinkSheet,
-                            true);
-                            
-                        if(log.Result.ToString() == "Win")
+                        if (log.Result.ToString() == "Win")
                         {
                             arenaResult.win = true;
                             win++;
@@ -488,6 +459,22 @@ namespace NineChronicles.Headless.GraphTypes
                     {
                         Name = "simulationCount",
                         Description = "Amount of simulations, between 1 and 1000"
+                    },
+                    new QueryArgument<ListGraphType<GuidGraphType>>
+                    {
+                        Name = "equipmentIds",
+                        Description = "List of equipment ids to simulate."
+                    },
+                    new QueryArgument<ListGraphType<GuidGraphType>>
+                    {
+                        Name = "costumeIds",
+                        Description = "List of costume ids to simulate."
+                    },
+                    new QueryArgument<ListGraphType<NonNullGraphType<RuneSlotInfoInputType>>>
+                    {
+                        Name = "runeSlotInfos",
+                        DefaultValue = new List<RuneSlotInfo>(),
+                        Description = "List of rune slot infos to simulate."
                     }
                 ),
                 resolve: context =>
@@ -496,6 +483,9 @@ namespace NineChronicles.Headless.GraphTypes
                     Address myAgentAddress = context.GetArgument<Address>("agentAddress");
                     Address enemyAvatarAddress = context.GetArgument<Address>("enemyAvatarAddress");
                     int simulationCount = context.GetArgument<int>("simulationCount");
+                    List<Guid> equipmentIds = context.GetArgument<List<Guid>?>("equipmentIds") ?? new List<Guid>();
+                    List<Guid> costumeIds = context.GetArgument<List<Guid>?>("costumeIds") ?? new List<Guid>();
+                    List<RuneSlotInfo> runeSlotInfos = context.GetArgument<List<RuneSlotInfo>?>("runeSlotInfos") ?? new List<RuneSlotInfo>();
                     var sw = Stopwatch.StartNew();
 
                     var states = context.Source.WorldState;
@@ -557,7 +547,10 @@ namespace NineChronicles.Headless.GraphTypes
                                 addressesHex,
                                 gameConfigState,
                                 collectionModifiers,
-                                myAvatarAddress
+                                myAvatarAddress,
+                                costumeIds,
+                                equipmentIds,
+                                runeSlotInfos
                             )
                     );
                     var (updatedStates, myItemSlotState, myRuneSlotState, myRuneStates, myCp) = myLoadout;
@@ -1294,21 +1287,26 @@ namespace NineChronicles.Headless.GraphTypes
             string addressesHex,
             GameConfigState gameConfigState,
             Dictionary<Address, List<StatModifier>> collectionModifiers,
-            Address myAvatarAddress
+            Address myAvatarAddress,
+            List<Guid>? overrideCostumes = null,
+            List<Guid>? overrideEquipments = null,
+            List<RuneSlotInfo>? overrideRuneInfos = null
         )
         {
 
             var myArenaAvatarStateAdr = ArenaAvatarState.DeriveAddress(myAvatarAddress);
-            if (!states.TryGetArenaAvatarState(myArenaAvatarStateAdr, out var myArenaAvatarState))
-            {
-                throw new ArenaAvatarStateNotFoundException(
-                $"[{nameof(BattleArena)}] my avatar address : {myAvatarAddress}");
-            }
+            var myArenaAvatarState = states.GetArenaAvatarState(myArenaAvatarStateAdr, myAvatarState);
 
             var myAvatarEquipments = myAvatarState.inventory.Equipments;
             var myAvatarCostumes = myAvatarState.inventory.Costumes;
-            List<Guid> equipments = myAvatarEquipments.Where(f=>myArenaAvatarState.Equipments.Contains(f.ItemId)).Select(n => n.ItemId).ToList();
-            List<Guid> costumes = myAvatarCostumes.Where(f=>myArenaAvatarState.Costumes.Contains(f.ItemId)).Select(n => n.ItemId).ToList();
+            List<Guid> equipments =
+                overrideEquipments is not null && overrideEquipments.Count > 0
+                    ? overrideEquipments
+                    : myAvatarEquipments.Where(f=>myArenaAvatarState.Equipments.Contains(f.ItemId)).Select(n => n.ItemId).ToList();
+            List<Guid> costumes =
+                overrideCostumes is not null && overrideCostumes.Count > 0
+                    ? overrideCostumes
+                    : myAvatarCostumes.Where(f=>myArenaAvatarState.Costumes.Contains(f.ItemId)).Select(n => n.ItemId).ToList();
 
             if(blockIndex is null)
             {
@@ -1341,6 +1339,10 @@ namespace NineChronicles.Headless.GraphTypes
                 : new RuneSlotState(BattleType.Arena);
 
             var runeListSheet = sheets.GetSheet<RuneListSheet>();
+            if (overrideRuneInfos is not null && overrideRuneInfos.Count > 0)
+            {
+                myRuneSlotState.UpdateSlot(overrideRuneInfos, runeListSheet);
+            }
 
             var myItemSlotStateAddress = ItemSlotState.DeriveAddress(
                 myAvatarAddress,
