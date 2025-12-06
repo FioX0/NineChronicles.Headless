@@ -35,6 +35,7 @@ using Serilog;
 using Libplanet.Action.State;
 using System.Text;
 using Nekoyume.Model.BattleStatus.Arena;
+using Nekoyume.Model.InfiniteTower;
 
 namespace NineChronicles.Headless.GraphTypes
 {
@@ -81,7 +82,7 @@ namespace NineChronicles.Headless.GraphTypes
                     int StageId = context.GetArgument<int>("stageId");
                     int WorldId = context.GetArgument<int>("worldId");
                     var Foods = context.GetArgument<List<Guid>>("foodIds");
-                    int? StageBuffId = 1;
+                    int? StageBuffId = null;
                     int simulationCount = context.GetArgument<int>("simulationCount");
 
                     //sheets
@@ -149,28 +150,31 @@ namespace NineChronicles.Headless.GraphTypes
                     var isNotClearedStage = !myAvatar.worldInformation.IsStageCleared(StageId);
                     var skillsOnWaveStart = new List<Skill>();
                     CrystalRandomSkillState? skillState = null;
-                    skillState = context.Source.WorldState.TryGetLegacyState<List>(skillStateAddress, out var serialized)
-                        ? new CrystalRandomSkillState(skillStateAddress, serialized)
-                        : new CrystalRandomSkillState(skillStateAddress, StageId);
-
-                    if (skillState.SkillIds.Any())
+                    if (isNotClearedStage)
                     {
-                        var crystalRandomBuffSheet = sheets.GetSheet<CrystalRandomBuffSheet>();
-                        var skillSheet = sheets.GetSheet<SkillSheet>();
-                        int selectedId;
-                        if (StageBuffId.HasValue && skillState.SkillIds.Contains(StageBuffId.Value))
+                        skillState = context.Source.WorldState.TryGetLegacyState<List>(skillStateAddress, out var serialized)
+                            ? new CrystalRandomSkillState(skillStateAddress, serialized)
+                            : new CrystalRandomSkillState(skillStateAddress, StageId);
+
+                        if (skillState.SkillIds.Any())
                         {
-                            selectedId = StageBuffId.Value;
+                            var crystalRandomBuffSheet = sheets.GetSheet<CrystalRandomBuffSheet>();
+                            var skillSheet = sheets.GetSheet<SkillSheet>();
+                            int selectedId;
+                            if (StageBuffId.HasValue && skillState.SkillIds.Contains(StageBuffId.Value))
+                            {
+                                selectedId = StageBuffId.Value;
+                            }
+                            else
+                            {
+                                selectedId = skillState.GetHighestRankSkill(crystalRandomBuffSheet);
+                            }
+                            var skill = CrystalRandomSkillState.GetSkill(
+                                selectedId,
+                                crystalRandomBuffSheet,
+                                skillSheet);
+                            skillsOnWaveStart.Add(skill);
                         }
-                        else
-                        {
-                            selectedId = skillState.GetHighestRankSkill(crystalRandomBuffSheet);
-                        }
-                        var skill = CrystalRandomSkillState.GetSkill(
-                            selectedId,
-                            crystalRandomBuffSheet,
-                            skillSheet);
-                        skillsOnWaveStart.Add(skill);
                     }
 
                     var collectionStates = context.Source.WorldState.GetCollectionStates(new[] { myAvatarAddress });
@@ -206,8 +210,8 @@ namespace NineChronicles.Headless.GraphTypes
                     int Wave1 = 0;
                     int Wave2 = 0;
                     int Wave3 = 0;
-
-                    for (var i = 0; i <= simulationCount; i++)
+                    
+                    for (var i = 0; i < simulationCount; i++)
                     {
                         LocalRandom random = new LocalRandom(rnd.Next());
                         var simulator = new StageSimulator(
@@ -1139,6 +1143,336 @@ namespace NineChronicles.Headless.GraphTypes
                     }
                     adventureBossSimulationState.result = adventureBossResultsList;
                     return adventureBossSimulationState;
+                }
+            );
+
+            Field<NonNullGraphType<InfiniteTowerSimulationStateType>>(
+                name: "infiniteTowerPercentageCalculator",
+                description: "Simulate InfiniteTowerBattle for a given floor and return win percentage.",
+                arguments: new QueryArguments(
+                    new QueryArgument<NonNullGraphType<AddressType>>
+                    {
+                        Name = "avatarAddress",
+                        Description = "Avatar address."
+                    },
+                    new QueryArgument<NonNullGraphType<IntGraphType>>
+                    {
+                        Name = "infiniteTowerId",
+                        Description = "Infinite tower season id."
+                    },
+                    new QueryArgument<NonNullGraphType<IntGraphType>>
+                    {
+                        Name = "floorId",
+                        Description = "Floor id to simulate."
+                    },
+                    new QueryArgument<NonNullGraphType<IntGraphType>>
+                    {
+                        Name = "simulationCount",
+                        Description = "Amount of simulations, between 1 and 1000."
+                    }
+                ),
+                resolve: context =>
+                {
+                    var avatarAddress = context.GetArgument<Address>("avatarAddress");
+                    var infiniteTowerId = context.GetArgument<int>("infiniteTowerId");
+                    var floorId = context.GetArgument<int>("floorId");
+                    var simulationCount = context.GetArgument<int>("simulationCount");
+
+                    if (simulationCount < 1 || simulationCount > 1000)
+                    {
+                        throw new Exception("infiniteTowerPercentageCalculator - Invalid simulationCount");
+                    }
+
+                    var states = context.Source.WorldState;
+                    var blockIndex = context.Source.BlockIndex ?? 0L;
+
+                    // Load avatar state
+                    var avatarState = states.GetAvatarState(avatarAddress);
+
+                    // Load sheets (mirrors InfiniteTowerBattle)
+                    var collectionExist = states.TryGetCollectionState(avatarAddress, out var collectionState);
+                    var sheetTypes = new List<Type>
+                    {
+                        typeof(InfiniteTowerFloorSheet),
+                        typeof(InfiniteTowerFloorWaveSheet),
+                        typeof(InfiniteTowerConditionSheet),
+                        typeof(InfiniteTowerScheduleSheet),
+                        typeof(EnemySkillSheet),
+                        typeof(SkillSheet),
+                        typeof(CostumeStatSheet),
+                        typeof(MaterialItemSheet),
+                        typeof(RuneListSheet),
+                        typeof(RuneLevelBonusSheet),
+                        typeof(BuffLimitSheet),
+                        typeof(BuffLinkSheet),
+                        typeof(CharacterSheet),
+                        typeof(ItemRequirementSheet),
+                        typeof(EquipmentItemRecipeSheet),
+                        typeof(EquipmentItemSubRecipeSheetV2),
+                        typeof(EquipmentItemOptionSheet),
+                        typeof(EquipmentItemSheet),
+                        typeof(ConsumableItemSheet),
+                        typeof(CostumeItemSheet),
+                    };
+                    if (collectionExist)
+                    {
+                        sheetTypes.Add(typeof(CollectionSheet));
+                    }
+
+                    var sheets = states.GetSheets(
+                        containSimulatorSheets: true,
+                        containValidateItemRequirementSheets: true,
+                        containItemSheet: true,
+                        sheetTypes: sheetTypes
+                    );
+
+                    var floorSheet = sheets.GetSheet<InfiniteTowerFloorSheet>();
+                    if (!floorSheet.TryGetValue(floorId, out var floorRow))
+                    {
+                        throw new SheetRowNotFoundException(
+                            nameof(InfiniteTowerFloorSheet),
+                            floorId);
+                    }
+
+                    var scheduleSheet = sheets.GetSheet<InfiniteTowerScheduleSheet>();
+                    var scheduleRow = scheduleSheet.Values.FirstOrDefault(s => s.InfiniteTowerId == infiniteTowerId);
+                    if (scheduleRow == null)
+                    {
+                        throw new SheetRowNotFoundException(
+                            nameof(InfiniteTowerScheduleSheet),
+                            infiniteTowerId);
+                    }
+
+                    scheduleRow.ValidateInfiniteTowerId(infiniteTowerId, avatarAddress.ToHex());
+                    scheduleRow.ValidateScheduleTiming(blockIndex, infiniteTowerId, avatarAddress.ToHex());
+                    scheduleRow.ValidateFloorRange(floorId, avatarAddress.ToHex());
+
+                    var gameConfigState = states.GetGameConfigState();
+                    var equipmentIds = avatarState.inventory.Equipments
+                        .Where(e => e.equipped)
+                        .Select(e => e.ItemId)
+                        .ToList();
+                    var costumeIds = avatarState.inventory.Costumes
+                        .Where(c => c.equipped)
+                        .Select(c => c.ItemId)
+                        .ToList();
+
+                    var equipmentList = avatarState.ValidateEquipmentsV3(
+                        equipmentIds, blockIndex, gameConfigState);
+                    var costumeList = avatarState.ValidateCostumeV2(costumeIds, gameConfigState);
+
+                    // Floor-specific restrictions
+                    floorRow.ValidateFloorRestrictions(equipmentList, costumeList);
+                    floorRow.ValidateEquipmentElementalType(equipmentList);
+
+                    // Rune slot & states for InfiniteTower
+                    var runeSlotStateAddress =
+                        RuneSlotState.DeriveAddress(avatarAddress, BattleType.InfiniteTower);
+                    var runeSlotState = states.TryGetLegacyState(runeSlotStateAddress, out List rawRuneSlotState)
+                        ? new RuneSlotState(rawRuneSlotState)
+                        : new RuneSlotState(BattleType.InfiniteTower);
+
+                    var runeListSheet = sheets.GetSheet<RuneListSheet>();
+                    var runeStates = states.GetRuneState(avatarAddress, out var _);
+
+                    // Validate forbidden runes for this floor
+                    floorRow.ValidateRuneTypes(runeSlotState.GetEquippedRuneSlotInfos(), runeListSheet);
+
+                    var itemSlotStateAddress =
+                        ItemSlotState.DeriveAddress(avatarAddress, BattleType.InfiniteTower);
+                    var itemSlotState = states.TryGetLegacyState(itemSlotStateAddress, out List rawItemSlotState)
+                        ? new ItemSlotState(rawItemSlotState)
+                        : new ItemSlotState(BattleType.InfiniteTower);
+
+                    // Collections
+                    var collectionModifiers = new List<StatModifier>();
+                    if (collectionExist && collectionState is not null)
+                    {
+                        var collectionSheet = sheets.GetSheet<CollectionSheet>();
+                        collectionModifiers = collectionState.GetModifiers(collectionSheet);
+                    }
+
+                    // CP validation
+                    var characterSheet = sheets.GetSheet<CharacterSheet>();
+                    if (!characterSheet.TryGetValue(avatarState.characterId, out var myCharacterRow))
+                    {
+                        throw new SheetRowNotFoundException("CharacterSheet", avatarState.characterId);
+                    }
+
+                    var runeLevelBonusSheet = sheets.GetSheet<RuneLevelBonusSheet>();
+                    var runeOptionSheet = sheets.GetSheet<RuneOptionSheet>();
+                    var costumeStatSheet = sheets.GetSheet<CostumeStatSheet>();
+                    var runeLevelBonus = RuneHelper.CalculateRuneLevelBonus(
+                        runeStates, runeListSheet, runeLevelBonusSheet);
+
+                    var runeOptions = new List<RuneOptionSheet.Row.RuneOptionInfo>();
+                    foreach (var runeInfo in runeSlotState.GetEquippedRuneSlotInfos())
+                    {
+                        if (!runeStates.TryGetRuneState(runeInfo.RuneId, out var runeState))
+                        {
+                            continue;
+                        }
+
+                        if (!runeOptionSheet.TryGetValue(runeState.RuneId, out var optionRow))
+                        {
+                            throw new SheetRowNotFoundException("RuneOptionSheet", runeState.RuneId);
+                        }
+
+                        if (!optionRow.LevelOptionMap.TryGetValue(runeState.Level, out var option))
+                        {
+                            throw new SheetRowNotFoundException("RuneOptionSheet", runeState.Level);
+                        }
+
+                        runeOptions.Add(option);
+                    }
+
+                    var cp = CPHelper.TotalCP(
+                        equipmentList,
+                        costumeList,
+                        runeOptions,
+                        avatarState.level,
+                        myCharacterRow,
+                        costumeStatSheet,
+                        collectionModifiers,
+                        runeLevelBonus);
+                    floorRow.ValidateCpRequirements(cp);
+
+                    // Floor waves & conditions
+                    var buffLimitSheet = sheets.GetSheet<BuffLimitSheet>();
+                    var buffLinkSheet = sheets.GetSheet<BuffLinkSheet>();
+                    var floorWaveSheet = sheets.GetSheet<InfiniteTowerFloorWaveSheet>();
+                    var floorWaveRow = floorWaveSheet[floorId];
+                    var waveRows = floorWaveRow.Waves;
+
+                    var conditionSheet = sheets.GetSheet<InfiniteTowerConditionSheet>();
+                    var guaranteedConditionRow = conditionSheet.Values
+                        .FirstOrDefault(c => c.Id == floorRow.GuaranteedConditionId);
+
+                    var baseConditionIds = new List<int>();
+                    if (guaranteedConditionRow != null)
+                    {
+                        baseConditionIds.Add(guaranteedConditionRow.Id);
+                    }
+
+                    var weightedConditionsDef = floorRow.GetRandomConditionsWithWeights();
+
+                    // Simulator sheets
+                    var simulatorSheets = sheets.GetSimulatorSheets();
+                    var enemySkillSheet = sheets.GetSheet<EnemySkillSheet>();
+                    var itemSheet = sheets.GetItemSheet();
+
+                    // Run simulations per random-condition variation
+                    var rnd = new System.Random();
+                    var resultsByConditions = new Dictionary<string, (List<InfiniteTowerCondition> conditions, int wins, int total)>();
+
+                    for (var i = 0; i < simulationCount; i++)
+                    {
+                        // Sample random conditions for this run
+                        List<InfiniteTowerCondition> randomConditions;
+                        var conditionRandom = new LocalRandom(rnd.Next());
+                        if (weightedConditionsDef.Any())
+                        {
+                            randomConditions = floorRow.GetRandomConditionsWithWeights(
+                                conditionSheet,
+                                conditionRandom,
+                                guaranteedConditionRow?.Id);
+                        }
+                        else
+                        {
+                            randomConditions = floorRow.GetRandomConditions(
+                                conditionSheet,
+                                conditionRandom,
+                                guaranteedConditionRow?.Id);
+                        }
+
+                        var allConditions = new List<InfiniteTowerCondition>();
+                        if (guaranteedConditionRow != null)
+                        {
+                            allConditions.Add(new InfiniteTowerCondition(guaranteedConditionRow));
+                        }
+                        allConditions.AddRange(randomConditions);
+
+                        // Validate no duplicate conditions
+                        var conditionIds = allConditions.Select(c => c.Id).OrderBy(id => id).ToArray();
+                        if (conditionIds.Length != conditionIds.Distinct().Count())
+                        {
+                            var duplicateIds = conditionIds
+                                .GroupBy(id => id)
+                                .Where(g => g.Count() > 1)
+                                .Select(g => g.Key);
+                            throw new InvalidOperationException(
+                                $"Duplicate conditions detected in floor conditions: {string.Join(", ", duplicateIds)}");
+                        }
+
+                        var key = string.Join(",", conditionIds);
+                        if (!resultsByConditions.TryGetValue(key, out var bucket))
+                        {
+                            bucket = (allConditions, 0, 0);
+                        }
+
+                        var simRandom = new LocalRandom(rnd.Next());
+                        var simulator = new InfiniteTowerSimulator(
+                            simRandom,
+                            avatarState,
+                            new List<Guid>(),
+                            runeStates,
+                            runeSlotState,
+                            infiniteTowerId,
+                            floorId,
+                            floorRow,
+                            waveRows,
+                            false,
+                            0,
+                            simulatorSheets,
+                            enemySkillSheet,
+                            costumeStatSheet,
+                            itemSheet,
+                            collectionModifiers,
+                            buffLimitSheet,
+                            buffLinkSheet,
+                            bucket.conditions,
+                            (int)gameConfigState.ShatterStrikeMaxDamage);
+
+                        simulator.Simulate();
+                        if (simulator.Log.IsClear)
+                        {
+                            bucket.wins++;
+                        }
+                        bucket.total++;
+                        resultsByConditions[key] = bucket;
+                    }
+
+                    var state = new InfiniteTowerSimulationState
+                    {
+                        blockIndex = blockIndex,
+                        result = resultsByConditions.Select(kvp =>
+                        {
+                            var conditions = kvp.Value.conditions;
+                            var ids = conditions
+                                .Select(c => c.Id)
+                                .OrderBy(id => id)
+                                .ToArray();
+                            var wins = kvp.Value.wins;
+                            var total = kvp.Value.total;
+                            var winPct = total > 0
+                                ? Math.Round(((decimal)wins / total) * 100m, 2)
+                                : 0m;
+
+                            var descriptions = conditions
+                                .Select(c => $"{c.StatType} {c.OperationType} {c.Value}")
+                                .ToArray();
+
+                            return new InfiniteTowerSimulationResult
+                            {
+                                floor = floorId,
+                                winPercentage = winPct,
+                                conditionIds = ids,
+                                conditionDescriptions = descriptions,
+                            };
+                        }).ToList(),
+                    };
+
+                    return state;
                 }
             );
         }
