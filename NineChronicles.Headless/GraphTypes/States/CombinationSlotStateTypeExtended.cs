@@ -24,6 +24,11 @@ namespace NineChronicles.Headless.GraphTypes.States
                 nameof(CombinationSlotStateExtended.Stars),
                 description: "How many options/stars the equipment contains",
                 resolve: context => context.Source.Stars);
+            // Use a custom field name to avoid clashes with any existing fields named "Spell".
+            Field<NonNullGraphType<IntGraphType>>(
+                "spellCount",
+                description: "Number of skills attached to the resulting item.",
+                resolve: context => context.Source.Spell);
         }
     }
 }

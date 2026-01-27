@@ -626,7 +626,7 @@ namespace NineChronicles.Headless.GraphTypes
             );
             Field<ListGraphType<CombinationSlotStateTypeExtended>>(
                 "CombinationSlotNEW",
-                description: "Allows you to pull data ",
+                description: "Returns in‑progress combination slots with basic result info.",
                 arguments: new QueryArguments(
                     new QueryArgument<NonNullGraphType<AddressType>>
                     {
@@ -636,38 +636,46 @@ namespace NineChronicles.Headless.GraphTypes
                 ),
                 resolve: context =>
                 {
-                    try
-                    {
-                        var avatarAddress = context.GetArgument<Address>("avatarAddress");
-                        List<CombinationSlotStateExtended> combinationSlotDataList = new List<CombinationSlotStateExtended>();
-                        for(int slotIndex = 0; slotIndex < 4; slotIndex++)
-                        {
-                            var deriveAddress = CombinationSlotState.DeriveAddress(avatarAddress, slotIndex);
-                            if (context.Source.WorldState.GetLegacyState(deriveAddress) is Dictionary state)
-                            {
-                                CombinationSlotStateExtended combinationSlotData = new CombinationSlotStateExtended();
+                    var avatarAddress = context.GetArgument<Address>("avatarAddress");
+                    var worldState = context.Source.WorldState;
+                    var blockIndex = context.Source.BlockIndex ?? 0L;
 
-                                var newCombSlotState = new CombinationSlotState(state);
-                                var states = newCombSlotState.Result;
-                                if(states is not null && newCombSlotState.WorkCompleteBlockIndex > context.Source.BlockIndex)
-                                {
-                                    combinationSlotData.SlotIndex = slotIndex;
-                                    combinationSlotData.ItemGUID = states.itemUsable.ItemId;
-                                    combinationSlotData.Stars = states.itemUsable.GetOptionCount();
-                                    combinationSlotData.Spell = states.itemUsable.Skills.Count();
-                                    combinationSlotData.UnlockBlockIndex = newCombSlotState.WorkCompleteBlockIndex;
-                                    combinationSlotDataList.Add(combinationSlotData);
-                                }
-                            }     
-                        }
-                        return combinationSlotDataList;
-                    }
-                    catch(Exception ex)
+                    var allSlots = worldState.GetAllCombinationSlotState(avatarAddress);
+                    var result = new List<CombinationSlotStateExtended>();
+
+                    foreach (var slot in allSlots)
                     {
-                        Console.WriteLine(ex.Message);
-                        Console.WriteLine(ex.StackTrace);
-                        return null;
+                        var attachmentResult = slot.Result;
+                        if (attachmentResult is null)
+                        {
+                            continue;
+                        }
+
+                        // Only include slots whose work is not yet complete at this block.
+                        if (slot.WorkCompleteBlockIndex <= blockIndex)
+                        {
+                            continue;
+                        }
+
+                        var item = attachmentResult.itemUsable;
+                        if (item is null)
+                        {
+                            continue;
+                        }
+
+                        var extended = new CombinationSlotStateExtended
+                        {
+                            SlotIndex = slot.Index,
+                            ItemGUID = item.ItemId,
+                            Stars = item.GetOptionCount(),
+                            Spell = item.Skills.Count,
+                            UnlockBlockIndex = slot.WorkCompleteBlockIndex,
+                        };
+
+                        result.Add(extended);
                     }
+
+                    return result;
                 }
             );
 
