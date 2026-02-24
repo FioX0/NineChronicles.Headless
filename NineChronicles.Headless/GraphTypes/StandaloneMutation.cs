@@ -54,11 +54,6 @@ namespace NineChronicles.Headless.GraphTypes
                     {
                         Name = "payload",
                         Description = "The hexadecimal string of the transaction to stage."
-                    },
-                    new QueryArgument<NonNullGraphType<StringGraphType>>
-                    {
-                        Name = "key",
-                        Description = "key to allow stageTransaction"
                     }
                 ),
                 resolve: context =>
@@ -66,13 +61,6 @@ namespace NineChronicles.Headless.GraphTypes
                     try
                     {
                         using var activity = ActivitySource.StartActivity("stageTransaction");
-                        string key = context.GetArgument<string>("key");
-                        if(key != "")
-                        {
-                            throw new ExecutionError(
-                            $"Incorrect StageTransaction key"
-                            );
-                        }
                         byte[] bytes = ByteUtil.ParseHex(context.GetArgument<string>("payload"));
                         Transaction tx = Transaction.Deserialize(bytes);
                         NineChroniclesNodeService? service = standaloneContext.NineChroniclesNodeService;
