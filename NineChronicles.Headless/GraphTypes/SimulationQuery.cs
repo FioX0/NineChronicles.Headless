@@ -1631,16 +1631,53 @@ namespace NineChronicles.Headless.GraphTypes
             var myArenaAvatarStateAdr = ArenaAvatarState.DeriveAddress(myAvatarAddress);
             var myArenaAvatarState = states.GetArenaAvatarState(myArenaAvatarStateAdr, myAvatarState);
 
+            var myItemSlotStateAddress = ItemSlotState.DeriveAddress(
+                myAvatarAddress,
+                BattleType.Arena
+            );
+            var hasMyItemSlotState = states.TryGetLegacyState(
+                myItemSlotStateAddress,
+                out List rawItemSlotState
+            );
+            var myItemSlotState = hasMyItemSlotState
+                ? new ItemSlotState(rawItemSlotState)
+                : new ItemSlotState(BattleType.Arena);
+
             var myAvatarEquipments = myAvatarState.inventory.Equipments;
             var myAvatarCostumes = myAvatarState.inventory.Costumes;
-            List<Guid> equipments =
-                overrideEquipments is not null && overrideEquipments.Count > 0
-                    ? overrideEquipments
-                    : myAvatarEquipments.Where(f=>myArenaAvatarState.Equipments.Contains(f.ItemId)).Select(n => n.ItemId).ToList();
-            List<Guid> costumes =
-                overrideCostumes is not null && overrideCostumes.Count > 0
-                    ? overrideCostumes
-                    : myAvatarCostumes.Where(f=>myArenaAvatarState.Costumes.Contains(f.ItemId)).Select(n => n.ItemId).ToList();
+            List<Guid> equipments;
+            if (overrideEquipments is not null && overrideEquipments.Count > 0)
+            {
+                equipments = overrideEquipments;
+            }
+            else if (hasMyItemSlotState)
+            {
+                equipments = myItemSlotState.Equipments.ToList();
+            }
+            else
+            {
+                equipments = myAvatarEquipments
+                    .Where(f => myArenaAvatarState.Equipments.Contains(f.ItemId))
+                    .Select(n => n.ItemId)
+                    .ToList();
+            }
+
+            List<Guid> costumes;
+            if (overrideCostumes is not null && overrideCostumes.Count > 0)
+            {
+                costumes = overrideCostumes;
+            }
+            else if (hasMyItemSlotState)
+            {
+                costumes = myItemSlotState.Costumes.ToList();
+            }
+            else
+            {
+                costumes = myAvatarCostumes
+                    .Where(f => myArenaAvatarState.Costumes.Contains(f.ItemId))
+                    .Select(n => n.ItemId)
+                    .ToList();
+            }
 
             if(blockIndex is null)
             {
@@ -1677,17 +1714,6 @@ namespace NineChronicles.Headless.GraphTypes
             {
                 myRuneSlotState.UpdateSlot(overrideRuneInfos, runeListSheet);
             }
-
-            var myItemSlotStateAddress = ItemSlotState.DeriveAddress(
-                myAvatarAddress,
-                BattleType.Arena
-            );
-            var myItemSlotState = states.TryGetLegacyState(
-                myItemSlotStateAddress,
-                out List rawItemSlotState
-            )
-                ? new ItemSlotState(rawItemSlotState)
-                : new ItemSlotState(BattleType.Arena);
 
             myItemSlotState.UpdateEquipment(equipments);
             myItemSlotState.UpdateCostumes(costumes);
