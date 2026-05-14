@@ -269,6 +269,54 @@ namespace NineChronicles.Headless.GraphTypes
                     return StageResult;
                 });
 
+            Field<NonNullGraphType<ArenaItemSlotStateType>>(
+                name: "arenaItemSlotState",
+                description: "Arena item slot state for an avatar.",
+                arguments: new QueryArguments(
+                    new QueryArgument<NonNullGraphType<AddressType>>
+                    {
+                        Name = "avatarAddress",
+                        Description = "Avatar address."
+                    }
+                ),
+                resolve: context =>
+                {
+                    Address avatarAddress = context.GetArgument<Address>("avatarAddress");
+                    var itemSlotStateAddress = ItemSlotState.DeriveAddress(
+                        avatarAddress,
+                        BattleType.Arena
+                    );
+                    var itemSlotStateExists = context.Source.WorldState.TryGetLegacyState(
+                        itemSlotStateAddress,
+                        out List rawItemSlotState
+                    );
+                    var itemSlotState = itemSlotStateExists
+                        ? new ItemSlotState(rawItemSlotState)
+                        : new ItemSlotState(BattleType.Arena);
+
+                    var avatarState = context.Source.WorldState.GetAvatarState(avatarAddress);
+                    var arenaAvatarStateAddress = ArenaAvatarState.DeriveAddress(avatarAddress);
+                    var arenaAvatarStateExists = context.Source.WorldState.TryGetArenaAvatarState(
+                        arenaAvatarStateAddress,
+                        out var arenaAvatarState
+                    );
+                    arenaAvatarState ??= new ArenaAvatarState(avatarState);
+
+                    return new ArenaItemSlotState
+                    {
+                        avatarAddress = avatarAddress,
+                        itemSlotStateAddress = itemSlotStateAddress,
+                        arenaAvatarStateAddress = arenaAvatarStateAddress,
+                        battleType = BattleType.Arena.ToString(),
+                        itemSlotStateExists = itemSlotStateExists,
+                        arenaAvatarStateExists = arenaAvatarStateExists,
+                        itemSlotEquipments = itemSlotState.Equipments.ToList(),
+                        itemSlotCostumes = itemSlotState.Costumes.ToList(),
+                        arenaAvatarEquipments = arenaAvatarState.Equipments.ToList(),
+                        arenaAvatarCostumes = arenaAvatarState.Costumes.ToList(),
+                    };
+                });
+
             Field<NonNullGraphType<ArenaSimulationStateType>>(
                 name: "arenaPercentageCalculator",
                 description: "State for championShip arena.",
@@ -1650,7 +1698,7 @@ namespace NineChronicles.Headless.GraphTypes
             {
                 equipments = overrideEquipments;
             }
-            else if (hasMyItemSlotState)
+            else if (myItemSlotState.Equipments.Any())
             {
                 equipments = myItemSlotState.Equipments.ToList();
             }
@@ -1667,7 +1715,7 @@ namespace NineChronicles.Headless.GraphTypes
             {
                 costumes = overrideCostumes;
             }
-            else if (hasMyItemSlotState)
+            else if (myItemSlotState.Costumes.Any())
             {
                 costumes = myItemSlotState.Costumes.ToList();
             }
