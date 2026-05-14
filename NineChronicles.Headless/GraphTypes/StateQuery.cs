@@ -1228,31 +1228,36 @@ namespace NineChronicles.Headless.GraphTypes
                     var blockIndex = context.Source.BlockIndex!.Value;
 
                     var myAvatar = context.Source.WorldState.GetAvatarState(myAvatarAddress);
-                    var myArenaAvatarStateAdr = ArenaAvatarState.DeriveAddress(myAvatarAddress);
-                    if (!context.Source.WorldState.TryGetArenaAvatarState(myArenaAvatarStateAdr, out var myArenaAvatarState))
+                    var myItemSlotStateAddress = ItemSlotState.DeriveAddress(myAvatarAddress, BattleType.Arena);
+                    var myItemSlotState = context.Source.WorldState.TryGetLegacyState(myItemSlotStateAddress, out List rawItemSlotState)
+                        ? new ItemSlotState(rawItemSlotState)
+                        : new ItemSlotState(BattleType.Arena);
+                    List<Guid> myArenaEquipementList = myItemSlotState.Equipments.ToList();
+                    List<Guid> myArenaCostumeList = myItemSlotState.Costumes.ToList();
+                    if (!myArenaEquipementList.Any() && !myArenaCostumeList.Any())
                     {
-                        throw new ArenaAvatarStateNotFoundException(
-                            $"[{nameof(BattleArena)}] my avatar address : {myAvatarAddress}");
+                        var myArenaAvatarStateAdr = ArenaAvatarState.DeriveAddress(myAvatarAddress);
+                        if (context.Source.WorldState.TryGetArenaAvatarState(myArenaAvatarStateAdr, out var myArenaAvatarState))
+                        {
+                            var myAvatarEquipments = myAvatar.inventory.Equipments;
+                            var myAvatarCostumes = myAvatar.inventory.Costumes;
+                            myArenaEquipementList = myAvatarEquipments
+                                .Where(f => myArenaAvatarState.Equipments.Contains(f.ItemId))
+                                .Select(n => n.ItemId)
+                                .ToList();
+                            myArenaCostumeList = myAvatarCostumes
+                                .Where(f => myArenaAvatarState.Costumes.Contains(f.ItemId))
+                                .Select(n => n.ItemId)
+                                .ToList();
+                        }
                     }
-                    var myAvatarEquipments = myAvatar.inventory.Equipments;
-                    var myAvatarCostumes = myAvatar.inventory.Costumes;
-                    List<Guid> myArenaEquipementList = myAvatarEquipments.Where(f=>myArenaAvatarState.Equipments.Contains(f.ItemId)).Select(n => n.ItemId).ToList();
-                    List<Guid> myArenaCostumeList = myAvatarCostumes.Where(f=>myArenaAvatarState.Costumes.Contains(f.ItemId)).Select(n => n.ItemId).ToList();
 
                     var myRuneSlotStateAddress = RuneSlotState.DeriveAddress(myAvatarAddress, BattleType.Arena);
                     var myRuneSlotState = context.Source.WorldState.TryGetLegacyState(myRuneSlotStateAddress, out List myRawRuneSlotState)
                         ? new RuneSlotState(myRawRuneSlotState)
                         : new RuneSlotState(BattleType.Arena);
 
-                    var myRuneStates = new List<RuneState>();
                     var myRuneSlotInfos = myRuneSlotState.GetEquippedRuneSlotInfos();
-                    foreach (var address in myRuneSlotInfos.Select(info => RuneState.DeriveAddress(myArenaAvatarStateAdr, info.RuneId)))
-                    {
-                        if (context.Source.WorldState.TryGetLegacyState(address, out List rawRuneState))
-                        {
-                            myRuneStates.Add(new RuneState(rawRuneState));
-                        }
-                    }
 
                     ActionBase action = new BattleArena
                     {
@@ -1298,31 +1303,36 @@ namespace NineChronicles.Headless.GraphTypes
                     var blockIndex = context.Source.BlockIndex!.Value;
 
                     var myAvatar = context.Source.WorldState.GetAvatarState(myAvatarAddress);
-                    var myArenaAvatarStateAdr = ArenaAvatarState.DeriveAddress(myAvatarAddress);
-                    if (!context.Source.WorldState.TryGetArenaAvatarState(myArenaAvatarStateAdr, out var myArenaAvatarState))
+                    var myItemSlotStateAddress = ItemSlotState.DeriveAddress(myAvatarAddress, BattleType.Arena);
+                    var myItemSlotState = context.Source.WorldState.TryGetLegacyState(myItemSlotStateAddress, out List rawItemSlotState)
+                        ? new ItemSlotState(rawItemSlotState)
+                        : new ItemSlotState(BattleType.Arena);
+                    List<Guid> myArenaEquipementList = myItemSlotState.Equipments.ToList();
+                    List<Guid> myArenaCostumeList = myItemSlotState.Costumes.ToList();
+                    if (!myArenaEquipementList.Any() && !myArenaCostumeList.Any())
                     {
-                        throw new ArenaAvatarStateNotFoundException(
-                            $"[{nameof(BattleArena)}] my avatar address : {myAvatarAddress}");
+                        var myArenaAvatarStateAdr = ArenaAvatarState.DeriveAddress(myAvatarAddress);
+                        if (context.Source.WorldState.TryGetArenaAvatarState(myArenaAvatarStateAdr, out var myArenaAvatarState))
+                        {
+                            var myAvatarEquipments = myAvatar.inventory.Equipments;
+                            var myAvatarCostumes = myAvatar.inventory.Costumes;
+                            myArenaEquipementList = myAvatarEquipments
+                                .Where(f => myArenaAvatarState.Equipments.Contains(f.ItemId))
+                                .Select(n => n.ItemId)
+                                .ToList();
+                            myArenaCostumeList = myAvatarCostumes
+                                .Where(f => myArenaAvatarState.Costumes.Contains(f.ItemId))
+                                .Select(n => n.ItemId)
+                                .ToList();
+                        }
                     }
-                    var myAvatarEquipments = myAvatar.inventory.Equipments;
-                    var myAvatarCostumes = myAvatar.inventory.Costumes;
-                    List<Guid> myArenaEquipementList = myAvatarEquipments.Where(f=>myArenaAvatarState.Equipments.Contains(f.ItemId)).Select(n => n.ItemId).ToList();
-                    List<Guid> myArenaCostumeList = myAvatarCostumes.Where(f=>myArenaAvatarState.Costumes.Contains(f.ItemId)).Select(n => n.ItemId).ToList();
 
                     var myRuneSlotStateAddress = RuneSlotState.DeriveAddress(myAvatarAddress, BattleType.Arena);
                     var myRuneSlotState = context.Source.WorldState.TryGetLegacyState(myRuneSlotStateAddress, out List myRawRuneSlotState)
                         ? new RuneSlotState(myRawRuneSlotState)
                         : new RuneSlotState(BattleType.Arena);
 
-                    var myRuneStates = new List<RuneState>();
                     var myRuneSlotInfos = myRuneSlotState.GetEquippedRuneSlotInfos();
-                    foreach (var address in myRuneSlotInfos.Select(info => RuneState.DeriveAddress(myArenaAvatarStateAdr, info.RuneId)))
-                    {
-                        if (context.Source.WorldState.TryGetLegacyState(address, out List rawRuneState))
-                        {
-                            myRuneStates.Add(new RuneState(rawRuneState));
-                        }
-                    }
 
                     ActionBase action = new Nekoyume.Action.Arena.Battle
                     {

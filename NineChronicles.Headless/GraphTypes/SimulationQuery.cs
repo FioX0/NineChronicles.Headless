@@ -317,6 +317,69 @@ namespace NineChronicles.Headless.GraphTypes
                     };
                 });
 
+            Field<NonNullGraphType<ArenaPrepStateType>>(
+                name: "arenaPrepState",
+                description: "Prepared arena state for both avatars.",
+                arguments: new QueryArguments(
+                    new QueryArgument<NonNullGraphType<AddressType>>
+                    {
+                        Name = "avatarAddress",
+                        Description = "Avatar address."
+                    },
+                    new QueryArgument<NonNullGraphType<AddressType>>
+                    {
+                        Name = "enemyAvatarAddress",
+                        Description = "Enemy Avatar address."
+                    }
+                ),
+                resolve: context =>
+                {
+                    Address myAvatarAddress = context.GetArgument<Address>("avatarAddress");
+                    Address enemyAvatarAddress = context.GetArgument<Address>("enemyAvatarAddress");
+
+#pragma warning disable LAA1002
+                    var collectionStates = context.Source.WorldState.GetCollectionStates(new[]
+                    {
+                        myAvatarAddress,
+                        enemyAvatarAddress,
+                    });
+#pragma warning restore LAA1002
+                    var sheets = LoadSheetsArenaBattle(
+                        context.Source.WorldState,
+                        collectionStates.Any()
+                    );
+                    var collectionModifiers = new Dictionary<Address, List<StatModifier>>
+                    {
+                        [myAvatarAddress] = new(),
+                        [enemyAvatarAddress] = new(),
+                    };
+
+                    if (collectionStates.Any())
+                    {
+                        var collectionSheet = sheets.GetSheet<CollectionSheet>();
+                        foreach (var (address, state) in collectionStates)
+                        {
+                            collectionModifiers[address] = state.GetModifiers(collectionSheet);
+                        }
+                    }
+
+                    return new ArenaPrepState
+                    {
+                        my = GetArenaPrepAvatarState(
+                            context.Source.WorldState,
+                            sheets,
+                            myAvatarAddress,
+                            collectionModifiers[myAvatarAddress]
+                        ),
+                        enemy = GetArenaPrepAvatarState(
+                            context.Source.WorldState,
+                            sheets,
+                            enemyAvatarAddress,
+                            collectionModifiers[enemyAvatarAddress]
+                        ),
+                    };
+                });
+
             Field<NonNullGraphType<ArenaSimulationStateType>>(
                 name: "arenaPercentageCalculator",
                 description: "State for championShip arena.",
@@ -1594,6 +1657,114 @@ namespace NineChronicles.Headless.GraphTypes
             );
             return result;
         }
+
+        private ArenaPrepAvatarState GetArenaPrepAvatarState(
+            IWorldState states,
+            Dictionary<Type, (Address address, ISheet sheet)> sheets,
+            Address avatarAddress,
+            List<StatModifier> collectionModifiers
+        )
+        {
+            var avatarState = states.GetAvatarState(avatarAddress);
+            var itemSlotStateAddress = ItemSlotState.DeriveAddress(
+                avatarAddress,
+                BattleType.Arena
+            );
+            var itemSlotStateExists = states.TryGetLegacyState(
+                itemSlotStateAddress,
+                out List rawItemSlotState
+            );
+            var itemSlotState = itemSlotStateExists
+                ? new ItemSlotState(rawItemSlotState)
+                : new ItemSlotState(BattleType.Arena);
+
+            var runeSlotStateAddress = RuneSlotState.DeriveAddress(
+                avatarAddress,
+                BattleType.Arena
+            );
+            var runeSlotStateExists = states.TryGetLegacyState(
+                runeSlotStateAddress,
+                out List rawRuneSlotState
+            );
+            var runeSlotState = runeSlotStateExists
+                ? new RuneSlotState(rawRuneSlotState)
+                : new RuneSlotState(BattleType.Arena);
+
+            var runeStates = states.GetRuneState(avatarAddress, out _);
+            var equippedRuneInfos = runeSlotState.GetEquippedRuneSlotInfos();
+            var runes = equippedRuneInfos
+                .Select(runeInfo =>
+                {
+                    var runeStateExists = runeStates.TryGetRuneState(
+                        runeInfo.RuneId,
+                        out var runeState
+                    );
+                    return new ArenaRuneSlotState
+                    {
+                        slotIndex = runeInfo.SlotIndex,
+                        runeId = runeInfo.RuneId,
+                        runeStateExists = runeStateExists,
+                        level = runeStateExists ? runeState.Level : 0,
+                    };
+                })
+                .ToList();
+
+            var equipments = itemSlotState.Equipments.ToList();
+            var costumes = itemSlotState.Costumes.ToList();
+            var equipmentItems = avatarState.GetNonFungibleItems<Equipment>(equipments);
+            var costumeItems = avatarState.GetNonFungibleItems<Costume>(costumes);
+            var runeOptionSheet = sheets.GetSheet<RuneOptionSheet>();
+            var runeOptions = RuneHelper.GetRuneOptions(
+                equippedRuneInfos,
+                runeStates,
+                runeOptionSheet
+            );
+
+            var characterSheet = sheets.GetSheet<CharacterSheet>();
+            if (!characterSheet.TryGetValue(avatarState.characterId, out var characterRow))
+            {
+                throw new SheetRowNotFoundException("CharacterSheet", avatarState.characterId);
+            }
+
+            var runeListSheet = sheets.GetSheet<RuneListSheet>();
+            var runeLevelBonusSheet = sheets.GetSheet<RuneLevelBonusSheet>();
+            var runeLevelBonus = RuneHelper.CalculateRuneLevelBonus(
+                runeStates,
+                runeListSheet,
+                runeLevelBonusSheet
+            );
+            var cp = CPHelper.TotalCP(
+                equipmentItems,
+                costumeItems,
+                runeOptions,
+                avatarState.level,
+                characterRow,
+                sheets.GetSheet<CostumeStatSheet>(),
+                collectionModifiers,
+                runeLevelBonus
+            );
+
+            return new ArenaPrepAvatarState
+            {
+                avatarAddress = avatarAddress,
+                nameWithHash = avatarState.NameWithHash,
+                level = avatarState.level,
+                itemSlotStateExists = itemSlotStateExists,
+                runeSlotStateExists = runeSlotStateExists,
+                equipments = equipments,
+                costumes = costumes,
+                runes = runes,
+                allRuneStateCount = runeStates.Runes.Count,
+                collectionModifierCount = collectionModifiers.Count,
+                collectionModifiers = collectionModifiers
+                    .Select(modifier =>
+                        $"{modifier.StatType}:{modifier.Operation}:{modifier.Value}"
+                    )
+                    .ToList(),
+                cp = cp,
+            };
+        }
+
         private Dictionary<Type, (Address address, ISheet sheet)> LoadSheetsArenaBattle(
             IWorldState states,
             bool collectionExist
