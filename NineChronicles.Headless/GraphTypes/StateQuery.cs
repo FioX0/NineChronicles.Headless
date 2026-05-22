@@ -43,6 +43,7 @@ using Nekoyume.TableData.Rune;
 using Nekoyume.Helper;
 using Nekoyume.Action.Exceptions.AdventureBoss;
 using Nekoyume.Model.AdventureBoss;
+using Nekoyume.Model.InfiniteTower;
 using Nekoyume.Action.AdventureBoss;
 using Nekoyume.Module.ValidatorDelegation;
 using Nekoyume.TableData.Event;
@@ -106,6 +107,40 @@ namespace NineChronicles.Headless.GraphTypes
                         .AsParallel()
                         .AsOrdered()
                         .Select(address => GetAvatarState(context.Source, address));
+                }
+            );
+            Field<NonNullGraphType<ListGraphType<NonNullGraphType<DustBalanceType>>>>(
+                name: "dustBalances",
+                description: "Dust material balances for an avatar.",
+                arguments: new QueryArguments(new QueryArgument<NonNullGraphType<AddressType>>
+                {
+                    Name = "avatarAddress",
+                    Description = "Address of avatar."
+                }),
+                resolve: context =>
+                {
+                    var avatarAddress = context.GetArgument<Address>("avatarAddress");
+                    var avatarState = context.Source.WorldState.GetAvatarState(avatarAddress);
+                    var dusts = new (int id, string name)[]
+                    {
+                        (800201, "Silver Dust"),
+                        (600201, "Golden Dust"),
+                        (600202, "Ruby Dust"),
+                        (600203, "Emerald Dust"),
+                    };
+
+                    return dusts.Select(dust =>
+                    {
+                        var amount = avatarState.inventory.TryGetItem(dust.id, out var item)
+                            ? item.count
+                            : 0;
+                        return new DustBalance
+                        {
+                            id = dust.id,
+                            name = dust.name,
+                            amount = amount
+                        };
+                    }).ToList();
                 }
             );
             Field<RankingMapStateType>(
@@ -1350,6 +1385,121 @@ namespace NineChronicles.Headless.GraphTypes
                 }
             );
             
+            Field<NonNullGraphType<ByteStringType>>(
+                name: "InfiniteTowerBattle",
+                arguments: new QueryArguments(
+                    new QueryArgument<NonNullGraphType<AddressType>>
+                    {
+                        Name = "avatarAddress",
+                        Description = "Avatar address."
+                    },
+                    new QueryArgument<NonNullGraphType<IntGraphType>>
+                    {
+                        Name = "floorId",
+                        Description = "Floor id to challenge."
+                    },
+                    new QueryArgument<ListGraphType<GuidGraphType>>
+                    {
+                        Name = "equipmentIds",
+                        Description = "Optional equipment ids. Uses chain Infinite Tower item slot when empty."
+                    },
+                    new QueryArgument<ListGraphType<GuidGraphType>>
+                    {
+                        Name = "costumeIds",
+                        Description = "Optional costume ids. Uses chain Infinite Tower item slot when empty."
+                    },
+                    new QueryArgument<ListGraphType<GuidGraphType>>
+                    {
+                        Name = "foodIds",
+                        Description = "Optional food ids."
+                    },
+                    new QueryArgument<ListGraphType<NonNullGraphType<RuneSlotInfoInputType>>>
+                    {
+                        Name = "runeSlotInfos",
+                        Description = "Optional rune slot info. Uses chain Infinite Tower rune slot when empty."
+                    }
+                ),
+                resolve: context =>
+                {
+                    var avatarAddress = context.GetArgument<Address>("avatarAddress");
+                    var floorId = context.GetArgument<int>("floorId");
+                    var suppliedEquipmentIds = context.GetArgument<List<Guid>>("equipmentIds");
+                    var suppliedCostumeIds = context.GetArgument<List<Guid>>("costumeIds");
+                    var foodIds = context.GetArgument<List<Guid>>("foodIds") ?? new List<Guid>();
+                    var suppliedRuneSlotInfos = context.GetArgument<List<RuneSlotInfo>>("runeSlotInfos");
+
+                    var states = context.Source.WorldState;
+                    var blockIndex = context.Source.BlockIndex!.Value;
+                    var scheduleRow = GetCurrentInfiniteTowerScheduleRow(states, blockIndex);
+                    if (scheduleRow is null)
+                    {
+                        throw new InvalidOperationException(
+                            $"No active Infinite Tower schedule at block {blockIndex}.");
+                    }
+
+                    scheduleRow.ValidateFloorRange(floorId, avatarAddress.ToHex());
+
+                    var itemSlotStateAddress = ItemSlotState.DeriveAddress(
+                        avatarAddress,
+                        BattleType.InfiniteTower);
+                    var itemSlotState = states.TryGetLegacyState(itemSlotStateAddress, out List rawItemSlotState)
+                        ? new ItemSlotState(rawItemSlotState)
+                        : new ItemSlotState(BattleType.InfiniteTower);
+                    var equipmentIds = suppliedEquipmentIds is { Count: > 0 }
+                        ? suppliedEquipmentIds
+                        : itemSlotState.Equipments.ToList();
+                    var costumeIds = suppliedCostumeIds is { Count: > 0 }
+                        ? suppliedCostumeIds
+                        : itemSlotState.Costumes.ToList();
+
+                    var runeSlotStateAddress = RuneSlotState.DeriveAddress(
+                        avatarAddress,
+                        BattleType.InfiniteTower);
+                    var runeSlotState = states.TryGetLegacyState(runeSlotStateAddress, out List rawRuneSlotState)
+                        ? new RuneSlotState(rawRuneSlotState)
+                        : new RuneSlotState(BattleType.InfiniteTower);
+                    var runeSlotInfos = suppliedRuneSlotInfos is { Count: > 0 }
+                        ? suppliedRuneSlotInfos
+                        : runeSlotState.GetEquippedRuneSlotInfos();
+
+                    ActionBase action = new InfiniteTowerBattle
+                    {
+                        AvatarAddress = avatarAddress,
+                        InfiniteTowerId = scheduleRow.InfiniteTowerId,
+                        FloorId = floorId,
+                        Equipments = equipmentIds,
+                        Costumes = costumeIds,
+                        Foods = foodIds,
+                        RuneInfos = runeSlotInfos,
+                        BuyTicketIfNeeded = false,
+                        UseNcgForTicket = false
+                    };
+
+                    return _codec.Encode(action.PlainValue);
+                }
+            );
+
+            Field<NonNullGraphType<InfiniteTowerStatusType>>(
+                name: "InfiniteTowerStatus",
+                arguments: new QueryArguments(
+                    new QueryArgument<NonNullGraphType<AddressType>>
+                    {
+                        Name = "avatarAddress",
+                        Description = "Avatar address."
+                    }
+                ),
+                resolve: context =>
+                {
+                    var avatarAddress = context.GetArgument<Address>("avatarAddress");
+                    var states = context.Source.WorldState;
+                    var blockIndex = context.Source.BlockIndex ?? 0L;
+                    var scheduleRow = GetCurrentInfiniteTowerScheduleRow(states, blockIndex);
+                    return scheduleRow is null
+                        ? CreateInactiveInfiniteTowerStatus(states, avatarAddress, blockIndex)
+                        : CreateActiveInfiniteTowerStatus(states, avatarAddress, scheduleRow, blockIndex);
+                }
+            );
+
             Field<RuneStateType>(
                 "RuneSlot",
                 description: "Grab Rune Slot Data",
@@ -2075,6 +2225,166 @@ namespace NineChronicles.Headless.GraphTypes
             }
 
             return result;
+        }
+
+        private static InfiniteTowerScheduleSheet.Row? GetCurrentInfiniteTowerScheduleRow(
+            IWorldState states,
+            long blockIndex)
+        {
+            var scheduleSheet = states.GetSheet<InfiniteTowerScheduleSheet>();
+            return scheduleSheet.Values
+                .OrderBy(row => row.StartBlockIndex)
+                .FirstOrDefault(row => row.IsActive(blockIndex));
+        }
+
+        private static InfiniteTowerStatus CreateInactiveInfiniteTowerStatus(
+            IWorldState states,
+            Address avatarAddress,
+            long blockIndex)
+        {
+            var scheduleSheet = states.GetSheet<InfiniteTowerScheduleSheet>();
+            var nextScheduleRow = scheduleSheet.Values
+                .Where(row => row.StartBlockIndex > blockIndex)
+                .OrderBy(row => row.StartBlockIndex)
+                .FirstOrDefault();
+
+            return new InfiniteTowerStatus
+            {
+                avatarAddress = avatarAddress.ToHex(),
+                currentBlockIndex = blockIndex,
+                isActive = false,
+                scheduleStatus = nextScheduleRow is null
+                    ? "No active Infinite Tower schedule."
+                    : $"No active Infinite Tower schedule. Next tower {nextScheduleRow.InfiniteTowerId} starts at block {nextScheduleRow.StartBlockIndex}.",
+                scheduleStartBlockIndex = nextScheduleRow?.StartBlockIndex,
+                scheduleEndBlockIndex = nextScheduleRow?.EndBlockIndex,
+                floorBegin = nextScheduleRow?.FloorBegin,
+                floorEnd = nextScheduleRow?.FloorEnd,
+                maxTickets = nextScheduleRow?.MaxTickets ?? 0,
+                dailyFreeTickets = nextScheduleRow?.DailyFreeTickets ?? 0,
+                resetIntervalBlocks = nextScheduleRow?.ResetIntervalBlocks ?? 0
+            };
+        }
+
+        private static InfiniteTowerStatus CreateActiveInfiniteTowerStatus(
+            IWorldState states,
+            Address avatarAddress,
+            InfiniteTowerScheduleSheet.Row scheduleRow,
+            long blockIndex)
+        {
+            var infiniteTowerInfo = GetEffectiveInfiniteTowerInfo(
+                states,
+                avatarAddress,
+                scheduleRow,
+                blockIndex);
+            var currentFloor = Math.Max(scheduleRow.FloorBegin, infiniteTowerInfo.ClearedFloor + 1);
+            var hasPlayableFloor = currentFloor <= scheduleRow.FloorEnd;
+            var nextTicketRefreshBlockIndex = GetNextTicketRefreshBlockIndex(
+                infiniteTowerInfo,
+                scheduleRow,
+                blockIndex);
+            var blocksUntilNextTicketRefresh = nextTicketRefreshBlockIndex.HasValue
+                ? Math.Max(0, nextTicketRefreshBlockIndex.Value - blockIndex)
+                : (long?)null;
+
+            return new InfiniteTowerStatus
+            {
+                avatarAddress = avatarAddress.ToHex(),
+                infiniteTowerId = scheduleRow.InfiniteTowerId,
+                currentBlockIndex = blockIndex,
+                isActive = true,
+                scheduleStatus = infiniteTowerInfo.GetScheduleStatus(
+                    blockIndex,
+                    scheduleRow.StartBlockIndex,
+                    scheduleRow.EndBlockIndex),
+                scheduleStartBlockIndex = scheduleRow.StartBlockIndex,
+                scheduleEndBlockIndex = scheduleRow.EndBlockIndex,
+                floorBegin = scheduleRow.FloorBegin,
+                floorEnd = scheduleRow.FloorEnd,
+                clearedFloor = infiniteTowerInfo.ClearedFloor,
+                currentFloor = currentFloor,
+                hasPlayableFloor = hasPlayableFloor,
+                remainingTickets = infiniteTowerInfo.RemainingTickets,
+                maxTickets = scheduleRow.MaxTickets,
+                dailyFreeTickets = scheduleRow.DailyFreeTickets,
+                resetIntervalBlocks = scheduleRow.ResetIntervalBlocks,
+                nextTicketRefreshBlockIndex = nextTicketRefreshBlockIndex,
+                blocksUntilNextTicketRefresh = blocksUntilNextTicketRefresh,
+                lastResetBlockIndex = infiniteTowerInfo.LastResetBlockIndex,
+                lastTicketRefillBlockIndex = infiniteTowerInfo.LastTicketRefillBlockIndex,
+                totalTicketsUsed = infiniteTowerInfo.TotalTicketsUsed,
+                numberOfTicketPurchases = infiniteTowerInfo.NumberOfTicketPurchases
+            };
+        }
+
+        private static InfiniteTowerInfo GetEffectiveInfiniteTowerInfo(
+            IWorldState states,
+            Address avatarAddress,
+            InfiniteTowerScheduleSheet.Row scheduleRow,
+            long blockIndex)
+        {
+            var rawInfo = GetInfiniteTowerInfoForStateQuery(
+                states,
+                avatarAddress,
+                scheduleRow.InfiniteTowerId);
+            var effectiveInfo = new InfiniteTowerInfo((List)rawInfo.Serialize());
+            if (effectiveInfo.LastResetBlockIndex < scheduleRow.StartBlockIndex)
+            {
+                effectiveInfo.PerformSeasonReset(
+                    blockIndex,
+                    scheduleRow.DailyFreeTickets,
+                    scheduleRow.MaxTickets);
+            }
+            else
+            {
+                effectiveInfo.TryRefillDailyTickets(
+                    scheduleRow.DailyFreeTickets,
+                    scheduleRow.MaxTickets,
+                    blockIndex,
+                    scheduleRow.ResetIntervalBlocks);
+            }
+
+            return effectiveInfo;
+        }
+
+        private static InfiniteTowerInfo GetInfiniteTowerInfoForStateQuery(
+            IWorldState states,
+            Address avatarAddress,
+            int infiniteTowerId)
+        {
+            var accountAddress = Addresses.InfiniteTowerInfo.Derive($"{infiniteTowerId}");
+            var account = states.GetAccountState(accountAddress);
+            var infiniteTowerInfoValue = account.GetState(avatarAddress);
+            if (infiniteTowerInfoValue is List serializedInfiniteTowerInfoList)
+            {
+                return new InfiniteTowerInfo(serializedInfiniteTowerInfoList);
+            }
+
+            var scheduleSheet = states.GetSheet<InfiniteTowerScheduleSheet>();
+            var scheduleRow = scheduleSheet.Values
+                .FirstOrDefault(row => row.InfiniteTowerId == infiniteTowerId);
+            var initialTickets = scheduleRow is null
+                ? 0
+                : Math.Min(scheduleRow.DailyFreeTickets, scheduleRow.MaxTickets);
+
+            return new InfiniteTowerInfo(avatarAddress, infiniteTowerId, initialTickets);
+        }
+
+        private static long? GetNextTicketRefreshBlockIndex(
+            InfiniteTowerInfo infiniteTowerInfo,
+            InfiniteTowerScheduleSheet.Row scheduleRow,
+            long blockIndex)
+        {
+            if (!scheduleRow.IsActive(blockIndex) ||
+                infiniteTowerInfo.RemainingTickets >= scheduleRow.MaxTickets)
+            {
+                return null;
+            }
+
+            var baseBlockIndex = infiniteTowerInfo.LastTicketRefillBlockIndex == 0
+                ? blockIndex
+                : infiniteTowerInfo.LastTicketRefillBlockIndex;
+            return baseBlockIndex + scheduleRow.ResetIntervalBlocks;
         }
 
         public static List<ArenaParticipant> GetBoundsWithPlayerScore(

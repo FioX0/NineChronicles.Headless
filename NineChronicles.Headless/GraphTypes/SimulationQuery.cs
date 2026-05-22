@@ -1358,15 +1358,15 @@ namespace NineChronicles.Headless.GraphTypes
                     scheduleRow.ValidateScheduleTiming(blockIndex, infiniteTowerId, avatarAddress.ToHex());
                     scheduleRow.ValidateFloorRange(floorId, avatarAddress.ToHex());
 
+                    var itemSlotStateAddress =
+                        ItemSlotState.DeriveAddress(avatarAddress, BattleType.InfiniteTower);
+                    var itemSlotState = states.TryGetLegacyState(itemSlotStateAddress, out List rawItemSlotState)
+                        ? new ItemSlotState(rawItemSlotState)
+                        : new ItemSlotState(BattleType.InfiniteTower);
+
                     var gameConfigState = states.GetGameConfigState();
-                    var equipmentIds = avatarState.inventory.Equipments
-                        .Where(e => e.equipped)
-                        .Select(e => e.ItemId)
-                        .ToList();
-                    var costumeIds = avatarState.inventory.Costumes
-                        .Where(c => c.equipped)
-                        .Select(c => c.ItemId)
-                        .ToList();
+                    var equipmentIds = itemSlotState.Equipments.ToList();
+                    var costumeIds = itemSlotState.Costumes.ToList();
 
                     var equipmentList = avatarState.ValidateEquipmentsV3(
                         equipmentIds, blockIndex, gameConfigState);
@@ -1388,12 +1388,6 @@ namespace NineChronicles.Headless.GraphTypes
 
                     // Validate forbidden runes for this floor
                     floorRow.ValidateRuneTypes(runeSlotState.GetEquippedRuneSlotInfos(), runeListSheet);
-
-                    var itemSlotStateAddress =
-                        ItemSlotState.DeriveAddress(avatarAddress, BattleType.InfiniteTower);
-                    var itemSlotState = states.TryGetLegacyState(itemSlotStateAddress, out List rawItemSlotState)
-                        ? new ItemSlotState(rawItemSlotState)
-                        : new ItemSlotState(BattleType.InfiniteTower);
 
                     // Collections
                     var collectionModifiers = new List<StatModifier>();
