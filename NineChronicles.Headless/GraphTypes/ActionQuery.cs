@@ -1137,6 +1137,7 @@ namespace NineChronicles.Headless.GraphTypes
             RegisterMead();
             RegisterGarages();
             RegisterSummon();
+            RegisterActivateCollection();
             RegisterClaimItems();
             RegisterRetrieveAvatarAssets();
             RegisterIssueToken();
