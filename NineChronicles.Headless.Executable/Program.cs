@@ -72,6 +72,35 @@ namespace NineChronicles.Headless.Executable
                 .RunAsync<Program>(args);
         }
 
+        public static async Task<string> ResolveGraphQLSecretTokenAsync(string secretTokenPath)
+        {
+            if (!Path.IsPathRooted(secretTokenPath))
+            {
+                secretTokenPath = Path.Combine(AppContext.BaseDirectory, secretTokenPath);
+            }
+
+            if (File.Exists(secretTokenPath))
+            {
+                var existingToken = (await File.ReadAllTextAsync(secretTokenPath)).Trim();
+                if (!string.IsNullOrEmpty(existingToken))
+                {
+                    return existingToken;
+                }
+            }
+
+            var directory = Path.GetDirectoryName(secretTokenPath);
+            if (!string.IsNullOrEmpty(directory))
+            {
+                Directory.CreateDirectory(directory);
+            }
+
+            var buffer = new byte[40];
+            new SecureRandom().NextBytes(buffer);
+            var secretToken = Convert.ToBase64String(buffer);
+            await File.WriteAllTextAsync(secretTokenPath, secretToken);
+            return secretToken;
+        }
+
         [PrimaryCommand]
         public async Task Run(
             [Option("app-protocol-version", new[] { 'V' },
@@ -554,12 +583,9 @@ namespace NineChronicles.Headless.Executable
                 if (headlessConfig.GraphQLServer)
                 {
                     string? secretToken = null;
-                    if (headlessConfig.GraphQLSecretTokenPath is { })
+                    if (headlessConfig.GraphQLSecretTokenPath is { } secretTokenPath)
                     {
-                        var buffer = new byte[40];
-                        new SecureRandom().NextBytes(buffer);
-                        secretToken = Convert.ToBase64String(buffer);
-                        await File.WriteAllTextAsync(headlessConfig.GraphQLSecretTokenPath, secretToken);
+                        secretToken = await ResolveGraphQLSecretTokenAsync(secretTokenPath);
                     }
 
                     var graphQLNodeServiceProperties = new GraphQLNodeServiceProperties

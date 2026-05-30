@@ -26,6 +26,52 @@ namespace NineChronicles.Headless.Executable.Tests
 {
     public class ProgramTest
     {
+        [Fact]
+        public async Task ResolveGraphQLSecretTokenAsyncReturnsExistingToken()
+        {
+            var path = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString(), "graphql-secret-token");
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            await File.WriteAllTextAsync(path, "preset-token\n");
+
+            var token = await Program.ResolveGraphQLSecretTokenAsync(path);
+
+            Assert.Equal("preset-token", token);
+            Assert.Equal("preset-token\n", await File.ReadAllTextAsync(path));
+        }
+
+        [Fact]
+        public async Task ResolveGraphQLSecretTokenAsyncGeneratesTokenWhenFileIsMissing()
+        {
+            var path = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString(), "graphql-secret-token");
+
+            var token = await Program.ResolveGraphQLSecretTokenAsync(path);
+
+            Assert.False(string.IsNullOrWhiteSpace(token));
+            Assert.Equal(token, await File.ReadAllTextAsync(path));
+        }
+
+        [Fact]
+        public async Task ResolveGraphQLSecretTokenAsyncResolvesRelativePathFromApplicationBaseDirectory()
+        {
+            var relativePath = $"graphql-secret-token-{Guid.NewGuid()}";
+            var expectedPath = Path.Combine(AppContext.BaseDirectory, relativePath);
+
+            try
+            {
+                var token = await Program.ResolveGraphQLSecretTokenAsync(relativePath);
+
+                Assert.False(string.IsNullOrWhiteSpace(token));
+                Assert.Equal(token, await File.ReadAllTextAsync(expectedPath));
+            }
+            finally
+            {
+                if (File.Exists(expectedPath))
+                {
+                    File.Delete(expectedPath);
+                }
+            }
+        }
+
         private readonly string _apvString;
         private readonly string _genesisBlockPath;
         private readonly string _storePath;
