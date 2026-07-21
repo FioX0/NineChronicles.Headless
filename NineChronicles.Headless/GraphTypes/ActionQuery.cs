@@ -16,6 +16,8 @@ using Lib9c;
 using System.Collections.Immutable;
 using Nekoyume.Model.Market;
 using Nekoyume.Model.Item;
+using Nekoyume.Model.State;
+using Nekoyume.Module;
 using Nekoyume.Action.Guild;
 using Nekoyume.TypedAddress;
 using System.Globalization;
@@ -685,6 +687,12 @@ namespace NineChronicles.Headless.GraphTypes
                         Name = "itemId",
                         Description = "GUID in string of item"
                     },
+                    new QueryArgument<IntGraphType>
+                    {
+                        Name = "quantity",
+                        Description = "Optional item count for fungible stackable items. Omit for non-fungible items.",
+                        DefaultValue = 1
+                    },
                     new QueryArgument<NonNullGraphType<IntGraphType>>
                     {
                         Name = "chain",
@@ -696,6 +704,7 @@ namespace NineChronicles.Headless.GraphTypes
                     var avatarAddress = context.GetArgument<Address>("avatarAddress");
                     var itemId = context.GetArgument<string>("itemId");
                     var price = context.GetArgument<int>("price");
+                    var quantity = context.GetArgument<int>("quantity", 1);
                     var chain = context.GetArgument<int>("chain");
                     Currency NCG =  new Currency();
                     RegisterInfo RegisterInfos = new RegisterInfo();
@@ -722,9 +731,31 @@ namespace NineChronicles.Headless.GraphTypes
                     }
 
                     RegisterInfos.Price = FungibleAssetValue.Parse(NCG, price.ToString());
-                    RegisterInfos.Type = Nekoyume.Model.Market.ProductType.NonFungible;
-                    RegisterInfos.TradableId = Guid.Parse(itemId);
-                    RegisterInfos.ItemCount = 1;
+                    RegisterInfos.Type = quantity > 1
+                        ? Nekoyume.Model.Market.ProductType.Fungible
+                        : Nekoyume.Model.Market.ProductType.NonFungible;
+                    if (Guid.TryParse(itemId, out var tradableId))
+                    {
+                        RegisterInfos.TradableId = tradableId;
+                    }
+                    else if (quantity > 1 && int.TryParse(itemId, NumberStyles.Integer, CultureInfo.InvariantCulture, out var materialItemId))
+                    {
+                        var sheet = standaloneContext.BlockChain
+                            .GetWorldState(standaloneContext.BlockChain.Tip.Hash)
+                            .GetSheet<MaterialItemSheet>();
+                        if (!sheet.TryGetValue(materialItemId, out var materialRow))
+                        {
+                            throw new ArgumentException($"Material item id not found: {itemId}");
+                        }
+
+                        RegisterInfos.TradableId = TradableMaterial.DeriveTradableId(materialRow.ItemId);
+                    }
+                    else
+                    {
+                        throw new FormatException($"itemId must be a tradable GUID, or a material item id when quantity > 1. itemId={itemId}, quantity={quantity}");
+                    }
+
+                    RegisterInfos.ItemCount = quantity;
 
                     List<IRegisterInfo> holds = new List<IRegisterInfo>();
                     holds.Add(RegisterInfos);
@@ -816,7 +847,9 @@ namespace NineChronicles.Headless.GraphTypes
 #pragma warning restore CS0618 // Type or member is obsolete
                     }
                     itemProductInfo.Price = FungibleAssetValue.Parse(NCG, price.ToString());
-                    itemProductInfo.Type = Nekoyume.Model.Market.ProductType.NonFungible;
+                    itemProductInfo.Type = subType == 16
+                        ? Nekoyume.Model.Market.ProductType.Fungible
+                        : Nekoyume.Model.Market.ProductType.NonFungible;
                     itemProductInfo.TradableId = Guid.Parse(itemId);
                     itemProductInfo.ProductId = Guid.Parse(productId);
                     itemProductInfo.AgentAddress = sellAgentAddress;
@@ -837,6 +870,8 @@ namespace NineChronicles.Headless.GraphTypes
                             itemProductInfo.ItemSubType = ItemSubType.Necklace; break;
                         case 10:
                             itemProductInfo.ItemSubType = ItemSubType.Ring; break;
+                        case 16:
+                            itemProductInfo.ItemSubType = ItemSubType.ApStone; break;
                     }
 
                     List<IProductInfo> holds = new List<IProductInfo>();

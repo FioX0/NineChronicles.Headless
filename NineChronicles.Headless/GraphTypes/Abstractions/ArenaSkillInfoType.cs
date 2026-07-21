@@ -11,7 +11,7 @@ namespace NineChronicles.Headless.GraphTypes.Abstractions
             Field<ArenaCharacterType>(
                 nameof(ArenaSkillInfo.Target),
                 resolve: context => context.Source.Target);
-            Field<IntGraphType>(
+            Field<LongGraphType>(
                 nameof(ArenaSkillInfo.Effect),
                 resolve: context => context.Source.Effect);
             Field<BooleanGraphType>(
@@ -29,6 +29,15 @@ namespace NineChronicles.Headless.GraphTypes.Abstractions
             Field<IntGraphType>(
                 nameof(ArenaSkillInfo.Turn),
                 resolve: context => context.Source.Turn);
+            Field<BooleanGraphType>(
+                nameof(ArenaSkillInfo.Affected),
+                resolve: context => context.Source.Affected);
+            Field<ArenaBuffInfoType>(
+                nameof(ArenaSkillInfo.Buff),
+                resolve: context => context.Source.Buff);
+            Field<ListGraphType<ArenaBuffInfoType>>(
+                nameof(ArenaSkillInfo.DispelList),
+                resolve: context => context.Source.DispelList);
         }
     }
 }

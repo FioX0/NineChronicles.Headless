@@ -91,8 +91,7 @@ namespace NineChronicles.Headless.GraphTypes
                         stateMemoryCache
                     );
                 }
-            )
-            .AuthorizeWithLocalPolicyIf(useSecretToken);
+            );
 
             Field<NonNullGraphType<ListGraphType<NonNullGraphType<DiffGraphType>>>>(
                 name: "diffs",
@@ -651,8 +650,7 @@ namespace NineChronicles.Headless.GraphTypes
                 {
                     using var activity = ActivitySource.StartActivity("actionQuery");
                     return new object();
-                })
-                .AuthorizeWithLocalPolicyIf(useSecretToken);
+                });
 
             Field<NonNullGraphType<ActionTxQuery>>(
                 name: "actionTxQuery",
@@ -682,8 +680,7 @@ namespace NineChronicles.Headless.GraphTypes
                 {
                     using var activity = ActivitySource.StartActivity("actionTxQuery");
                     return new object();
-                })
-                .AuthorizeWithLocalPolicyIf(useSecretToken);
+                });
 
             Field<NonNullGraphType<AddressQuery>>(
                 name: "addressQuery",

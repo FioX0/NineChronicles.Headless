@@ -12,6 +12,9 @@ namespace NineChronicles.Headless.GraphTypes.Abstractions
     {
         public ArenaSkillType()
         {
+            Field<IntGraphType>(
+                nameof(ArenaSkill.SkillId),
+                resolve: context => context.Source.SkillId);
             Field<NonNullGraphType<ArenaCharacterType>>(
                 nameof(ArenaEventBase.Character),
                 resolve: context => context.Source.Character

@@ -34,25 +34,25 @@ namespace NineChronicles.Headless.GraphTypes.Abstractions
             Field<IntGraphType>(
                 nameof(ArenaCharacter.Level),
                 resolve: context => context.Source.Level);
-            Field<IntGraphType>(
+            Field<LongGraphType>(
                 nameof(ArenaCharacter.CurrentHP),
                 resolve: context => context.Source.CurrentHP);
-            Field<IntGraphType>(
+            Field<LongGraphType>(
                 nameof(ArenaCharacter.HP),
                 resolve: context => context.Source.AdditionalHP);
-            Field<IntGraphType>(
+            Field<LongGraphType>(
                 nameof(ArenaCharacter.ATK),
                 resolve: context => context.Source.ATK);
-            Field<IntGraphType>(
+            Field<LongGraphType>(
                 nameof(ArenaCharacter.DEF),
                 resolve: context => context.Source.DEF);
-            Field<IntGraphType>(
+            Field<LongGraphType>(
                 nameof(ArenaCharacter.CRI),
                 resolve: context => context.Source.CRI);
-            Field<IntGraphType>(
+            Field<LongGraphType>(
                 nameof(ArenaCharacter.HIT),
                 resolve: context => context.Source.HIT);
-            Field<IntGraphType>(
+            Field<LongGraphType>(
                 nameof(ArenaCharacter.SPD),
                 resolve: context => context.Source.SPD);
             Field<BooleanGraphType>(
