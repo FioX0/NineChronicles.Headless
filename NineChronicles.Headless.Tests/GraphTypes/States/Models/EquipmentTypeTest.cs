@@ -22,6 +22,7 @@ namespace NineChronicles.Headless.Tests.GraphTypes.States.Models
                 id
                 grade
                 level
+                exp
                 elementalType
                 setId
                 itemId
@@ -55,11 +56,13 @@ namespace NineChronicles.Headless.Tests.GraphTypes.States.Models
             var skillRow = Fixtures.TableSheetsFX.SkillSheet.OrderedList.First();
             var skill = SkillFactory.Get(skillRow, 1, 1, 100, StatType.HP);
             equipment.Skills.Add(skill);
+            equipment.Exp = (long)int.MaxValue + 1;
 
             var queryResult = await ExecuteQueryAsync<EquipmentType>(query, source: equipment);
             Assert.Null(queryResult.Errors);
             var data = (Dictionary<string, object>)((ExecutionNode)queryResult.Data!).ToValue()!;
             Assert.Equal(10L, data["requiredBlockIndex"]);
+            Assert.Equal((long)int.MaxValue + 1, data["exp"]);
         }
     }
 }
