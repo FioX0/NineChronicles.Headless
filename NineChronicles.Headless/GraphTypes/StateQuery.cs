@@ -57,10 +57,18 @@ namespace NineChronicles.Headless.GraphTypes
     public partial class StateQuery : ObjectGraphType<StateContext>
     {
         private readonly Codec _codec = new Codec();
+        private readonly StandaloneContext? _standaloneContext;
 
         public StateQuery()
+            : this(null)
         {
+        }
+
+        public StateQuery(StandaloneContext? standaloneContext)
+        {
+            _standaloneContext = standaloneContext;
             Name = "StateQuery";
+            RegisterHackAndSlashFirstClearField();
 
             AvatarStateType.AvatarStateContext? GetAvatarState(StateContext context, Address address)
             {
