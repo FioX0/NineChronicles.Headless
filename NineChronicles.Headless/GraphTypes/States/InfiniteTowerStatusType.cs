@@ -39,6 +39,9 @@ namespace NineChronicles.Headless.GraphTypes.States
             Field<NonNullGraphType<IntGraphType>>(
                 nameof(InfiniteTowerStatus.currentFloor),
                 resolve: context => context.Source.currentFloor);
+            Field<InfiniteTowerFloorRulesType>(
+                nameof(InfiniteTowerStatus.floorRules),
+                resolve: context => context.Source.floorRules);
             Field<NonNullGraphType<BooleanGraphType>>(
                 nameof(InfiniteTowerStatus.hasPlayableFloor),
                 resolve: context => context.Source.hasPlayableFloor);

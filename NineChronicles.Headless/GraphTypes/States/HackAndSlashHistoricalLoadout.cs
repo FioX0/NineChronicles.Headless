@@ -218,6 +218,33 @@ namespace NineChronicles.Headless.GraphTypes.States
                 IReadOnlyList<int> collectionIds,
                 IReadOnlyList<StatModifier> collectionModifiers)
             {
+                return BuildWithRecordedCp(
+                    inputWorldState,
+                    inputAvatar,
+                    equipments,
+                    costumes,
+                    foods,
+                    runes,
+                    runeSlots,
+                    allRuneState,
+                    collectionIds,
+                    collectionModifiers,
+                    GetRecordedAdventureCp(outputWorldState, avatarAddress));
+            }
+
+            internal static HackAndSlashHistoricalLoadout BuildWithRecordedCp(
+                IWorldState inputWorldState,
+                AvatarState inputAvatar,
+                IReadOnlyList<Equipment> equipments,
+                IReadOnlyList<Costume> costumes,
+                IReadOnlyList<Consumable> foods,
+                IReadOnlyList<RuneState> runes,
+                IReadOnlyList<RuneSlotInfo> runeSlots,
+                AllRuneState allRuneState,
+                IReadOnlyList<int> collectionIds,
+                IReadOnlyList<StatModifier> collectionModifiers,
+                long recordedCp)
+            {
                 var equipmentNames = equipments.Count > 0
                     ? GetNames<EquipmentItemSheet>(inputWorldState)
                     : null;
@@ -263,7 +290,7 @@ namespace NineChronicles.Headless.GraphTypes.States
                         Exp = inputAvatar.exp,
                         ActionPoint = inputAvatar.actionPoint,
                     },
-                    RecordedAdventureCp = GetRecordedAdventureCp(outputWorldState, avatarAddress),
+                    RecordedAdventureCp = recordedCp,
                     Equipments = equipments.Select(equipment => new HackAndSlashHistoricalEquipment
                     {
                         Item = ToEquipmentItem(equipment, skillNames),

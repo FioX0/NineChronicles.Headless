@@ -13,6 +13,7 @@ namespace NineChronicles.Headless.GraphTypes.States
         public int? floorEnd { get; set; }
         public int clearedFloor { get; set; }
         public int currentFloor { get; set; }
+        public InfiniteTowerFloorRules? floorRules { get; set; }
         public bool hasPlayableFloor { get; set; }
         public int remainingTickets { get; set; }
         public int maxTickets { get; set; }

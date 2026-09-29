@@ -69,6 +69,7 @@ namespace NineChronicles.Headless.GraphTypes
             _standaloneContext = standaloneContext;
             Name = "StateQuery";
             RegisterHackAndSlashFirstClearField();
+            RegisterInfiniteTowerFirstClearField();
 
             AvatarStateType.AvatarStateContext? GetAvatarState(StateContext context, Address address)
             {
@@ -1413,12 +1414,12 @@ namespace NineChronicles.Headless.GraphTypes
                     new QueryArgument<ListGraphType<GuidGraphType>>
                     {
                         Name = "equipmentIds",
-                        Description = "Optional equipment ids. Uses chain Infinite Tower item slot when empty."
+                        Description = "Optional equipment ids. Uses chain Infinite Tower item slot only when omitted."
                     },
                     new QueryArgument<ListGraphType<GuidGraphType>>
                     {
                         Name = "costumeIds",
-                        Description = "Optional costume ids. Uses chain Infinite Tower item slot when empty."
+                        Description = "Optional costume ids. Uses chain Infinite Tower item slot only when omitted."
                     },
                     new QueryArgument<ListGraphType<GuidGraphType>>
                     {
@@ -1428,7 +1429,7 @@ namespace NineChronicles.Headless.GraphTypes
                     new QueryArgument<ListGraphType<NonNullGraphType<RuneSlotInfoInputType>>>
                     {
                         Name = "runeSlotInfos",
-                        Description = "Optional rune slot info. Uses chain Infinite Tower rune slot when empty."
+                        Description = "Optional rune slot info. Uses chain Infinite Tower rune slot only when omitted."
                     }
                 ),
                 resolve: context =>
@@ -1457,12 +1458,8 @@ namespace NineChronicles.Headless.GraphTypes
                     var itemSlotState = states.TryGetLegacyState(itemSlotStateAddress, out List rawItemSlotState)
                         ? new ItemSlotState(rawItemSlotState)
                         : new ItemSlotState(BattleType.InfiniteTower);
-                    var equipmentIds = suppliedEquipmentIds is { Count: > 0 }
-                        ? suppliedEquipmentIds
-                        : itemSlotState.Equipments.ToList();
-                    var costumeIds = suppliedCostumeIds is { Count: > 0 }
-                        ? suppliedCostumeIds
-                        : itemSlotState.Costumes.ToList();
+                    var equipmentIds = suppliedEquipmentIds ?? itemSlotState.Equipments.ToList();
+                    var costumeIds = suppliedCostumeIds ?? itemSlotState.Costumes.ToList();
 
                     var runeSlotStateAddress = RuneSlotState.DeriveAddress(
                         avatarAddress,
@@ -1470,9 +1467,7 @@ namespace NineChronicles.Headless.GraphTypes
                     var runeSlotState = states.TryGetLegacyState(runeSlotStateAddress, out List rawRuneSlotState)
                         ? new RuneSlotState(rawRuneSlotState)
                         : new RuneSlotState(BattleType.InfiniteTower);
-                    var runeSlotInfos = suppliedRuneSlotInfos is { Count: > 0 }
-                        ? suppliedRuneSlotInfos
-                        : runeSlotState.GetEquippedRuneSlotInfos();
+                    var runeSlotInfos = suppliedRuneSlotInfos ?? runeSlotState.GetEquippedRuneSlotInfos();
 
                     ActionBase action = new InfiniteTowerBattle
                     {
@@ -1490,6 +1485,101 @@ namespace NineChronicles.Headless.GraphTypes
                     return _codec.Encode(action.PlainValue);
                 }
             );
+
+            Field<NonNullGraphType<LongGraphType>>(
+                name: "InfiniteTowerLoadoutCp",
+                description: "Exact CP for explicitly selected Infinite Tower equipment, costumes, and rune slots, with no food.",
+                arguments: new QueryArguments(
+                    new QueryArgument<NonNullGraphType<AddressType>> { Name = "avatarAddress" },
+                    new QueryArgument<NonNullGraphType<ListGraphType<NonNullGraphType<GuidGraphType>>>> { Name = "equipmentIds" },
+                    new QueryArgument<NonNullGraphType<ListGraphType<NonNullGraphType<GuidGraphType>>>> { Name = "costumeIds" },
+                    new QueryArgument<ListGraphType<NonNullGraphType<RuneSlotInfoInputType>>> { Name = "runeSlotInfos" }
+                ),
+                resolve: context =>
+                {
+                    var states = context.Source.WorldState;
+                    var avatarAddress = context.GetArgument<Address>("avatarAddress");
+                    var avatar = states.GetAvatarState(avatarAddress);
+                    var equipments = avatar.ValidateEquipmentsV3(
+                        context.GetArgument<List<Guid>>("equipmentIds"),
+                        context.Source.BlockIndex!.Value,
+                        states.GetGameConfigState());
+                    var costumes = avatar.ValidateCostumeV2(
+                        context.GetArgument<List<Guid>>("costumeIds"),
+                        states.GetGameConfigState());
+                    var characterSheet = states.GetSheet<CharacterSheet>();
+                    if (!characterSheet.TryGetValue(avatar.characterId, out var characterRow))
+                    {
+                        throw new SheetRowNotFoundException("CharacterSheet", avatar.characterId);
+                    }
+                    var runeStates = states.GetRuneState(avatarAddress, out _);
+                    var runeInfos = context.GetArgument<List<RuneSlotInfo>>("runeSlotInfos") ?? new List<RuneSlotInfo>();
+                    if (runeInfos.GroupBy(x => x.SlotIndex).Any(x => x.Count() > 1) ||
+                        runeInfos.GroupBy(x => x.RuneId).Any(x => x.Count() > 1))
+                    {
+                        throw new InvalidOperationException("Duplicate Tower rune or slot.");
+                    }
+                    foreach (var info in runeInfos)
+                    {
+                        if (!runeStates.TryGetRuneState(info.RuneId, out var ownedRune) || ownedRune.Level <= 0)
+                        {
+                            throw new InvalidOperationException("Tower rune not owned or not leveled.");
+                        }
+                    }
+                    var collectionModifiers = states.TryGetCollectionState(avatarAddress, out var collectionState)
+                        ? collectionState.GetModifiers(states.GetSheet<CollectionSheet>())
+                        : new List<StatModifier>();
+                    var scheduleRow = GetCurrentInfiniteTowerScheduleRow(states, context.Source.BlockIndex.Value)
+                        ?? throw new InvalidOperationException("No active Infinite Tower schedule.");
+                    var progress = GetEffectiveInfiniteTowerInfo(states, avatarAddress, scheduleRow, context.Source.BlockIndex.Value);
+                    var floorId = Math.Max(scheduleRow.FloorBegin, progress.ClearedFloor + 1);
+                    scheduleRow.ValidateFloorRange(floorId, avatarAddress.ToHex());
+                    var floorSheet = states.GetSheet<InfiniteTowerFloorSheet>();
+                    if (!floorSheet.TryGetValue(floorId, out var floorRow))
+                    {
+                        throw new SheetRowNotFoundException(nameof(InfiniteTowerFloorSheet), floorId);
+                    }
+                    floorRow.ValidateFloorRestrictions(equipments, costumes);
+                    floorRow.ValidateEquipmentElementalType(equipments);
+                    var runeListSheet = states.GetSheet<RuneListSheet>();
+                    var runeSlotAddress = RuneSlotState.DeriveAddress(avatarAddress, BattleType.InfiniteTower);
+                    var newSlotState = !states.TryGetLegacyState(runeSlotAddress, out List rawSlotState);
+                    var slotState = newSlotState
+                        ? new RuneSlotState(BattleType.InfiniteTower)
+                        : new RuneSlotState(rawSlotState);
+                    if (newSlotState)
+                    {
+                        var adventureSlotAddress = RuneSlotState.DeriveAddress(avatarAddress, BattleType.Adventure);
+                        if (states.TryGetLegacyState(adventureSlotAddress, out List rawAdventureSlots))
+                        {
+                            var unlocked = new RuneSlotState(rawAdventureSlots).GetRuneSlot();
+                            foreach (var slot in slotState.GetRuneSlot())
+                            {
+                                if (slot.IsLock && unlocked.Any(x => x.Index == slot.Index && !x.IsLock))
+                                {
+                                    slot.Unlock();
+                                }
+                            }
+                        }
+                    }
+                    slotState.UpdateSlot(runeInfos, runeListSheet);
+                    var equippedRunes = slotState.GetEquippedRuneSlotInfos();
+                    if (equippedRunes.Count != runeInfos.Count ||
+                        runeInfos.Any(x => !equippedRunes.Any(y => y.SlotIndex == x.SlotIndex && y.RuneId == x.RuneId)))
+                    {
+                        throw new InvalidOperationException("Tower rune slot is locked or incompatible.");
+                    }
+                    floorRow.ValidateRuneTypes(runeInfos, runeListSheet);
+                    var cp = Nekoyume.Battle.CPHelper.TotalCP(
+                        equipments, costumes,
+                        RuneHelper.GetRuneOptions(runeInfos, runeStates, states.GetSheet<RuneOptionSheet>()),
+                        avatar.level, characterRow, states.GetSheet<CostumeStatSheet>(), collectionModifiers,
+                        RuneHelper.CalculateRuneLevelBonus(
+                            runeStates, runeListSheet, states.GetSheet<RuneLevelBonusSheet>()));
+                    // Report CP even when outside floor limits so UI can show exact mismatch.
+                    // API enforces the current floor's bounds before requesting a battle.
+                    return cp;
+                });
 
             Field<NonNullGraphType<InfiniteTowerStatusType>>(
                 name: "InfiniteTowerStatus",
@@ -2291,6 +2381,28 @@ namespace NineChronicles.Headless.GraphTypes
                 blockIndex);
             var currentFloor = Math.Max(scheduleRow.FloorBegin, infiniteTowerInfo.ClearedFloor + 1);
             var hasPlayableFloor = currentFloor <= scheduleRow.FloorEnd;
+            InfiniteTowerFloorRules? floorRules = null;
+            if (hasPlayableFloor)
+            {
+                var floorSheet = states.GetSheet<InfiniteTowerFloorSheet>();
+                if (!floorSheet.TryGetValue(currentFloor, out var row))
+                {
+                    throw new SheetRowNotFoundException(nameof(InfiniteTowerFloorSheet), currentFloor);
+                }
+                floorRules = new InfiniteTowerFloorRules
+                {
+                    floorId = currentFloor,
+                    requiredCp = row.RequiredCp,
+                    maxCp = row.MaxCp,
+                    forbiddenItemSubTypes = row.ForbiddenItemSubTypes.Select(x => x.ToString()).ToList(),
+                    minItemGrade = row.MinItemGrade,
+                    maxItemGrade = row.MaxItemGrade,
+                    minItemLevel = row.MinItemLevel,
+                    maxItemLevel = row.MaxItemLevel,
+                    requiredElementalTypes = row.RequiredElementalTypes.Select(x => x.ToString()).ToList(),
+                    forbiddenRuneTypes = row.ForbiddenRuneTypes.Select(x => x.ToString()).ToList()
+                };
+            }
             var nextTicketRefreshBlockIndex = GetNextTicketRefreshBlockIndex(
                 infiniteTowerInfo,
                 scheduleRow,
@@ -2316,6 +2428,7 @@ namespace NineChronicles.Headless.GraphTypes
                 clearedFloor = infiniteTowerInfo.ClearedFloor,
                 currentFloor = currentFloor,
                 hasPlayableFloor = hasPlayableFloor,
+                floorRules = floorRules,
                 remainingTickets = infiniteTowerInfo.RemainingTickets,
                 maxTickets = scheduleRow.MaxTickets,
                 dailyFreeTickets = scheduleRow.DailyFreeTickets,
