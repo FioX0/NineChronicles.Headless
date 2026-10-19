@@ -44,6 +44,7 @@ namespace NineChronicles.Headless.GraphTypes
         public SimultionQuery()
         {
             Name = "SimultionQuery";
+            ProgressionStageSimulation.Register(this);
             
             Field<StageResultInfoStateType>(
                 name: "stagePercentageCalculator",

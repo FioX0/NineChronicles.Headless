@@ -68,6 +68,7 @@ namespace NineChronicles.Headless.GraphTypes
         {
             _standaloneContext = standaloneContext;
             Name = "StateQuery";
+            AdventureAdmissionQuery.Register(this);
             RegisterHackAndSlashFirstClearField();
             RegisterInfiniteTowerFirstClearField();
 

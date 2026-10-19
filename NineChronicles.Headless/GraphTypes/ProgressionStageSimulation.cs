@@ -1,0 +1,361 @@
+#nullable enable
+using System;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.Linq;
+using System.Threading;
+using GraphQL;
+using GraphQL.Types;
+using Libplanet.Crypto;
+using Libplanet.Explorer.GraphTypes;
+using Nekoyume;
+using Nekoyume.Action;
+using Nekoyume.Battle;
+using Nekoyume.Extensions;
+using Nekoyume.Helper;
+using Nekoyume.Model.EnumType;
+using Nekoyume.Model.Item;
+using Nekoyume.Model.Market;
+using Nekoyume.Model.Skill;
+using Nekoyume.Model.Stat;
+using Nekoyume.Model.State;
+using Nekoyume.Module;
+using Nekoyume.TableData;
+using Nekoyume.TableData.Rune;
+using NineChronicles.Headless.GraphTypes.States;
+using BList = Bencodex.Types.List;
+
+namespace NineChronicles.Headless.GraphTypes
+{
+    /// <summary>
+    /// Counterfactual combat forecast only. Does not execute actions or assert AP, funds,
+    /// enhancement-slot availability, transaction fees, or market availability after this snapshot.
+    /// Legacy simulators intentionally remain unchanged.
+    /// </summary>
+    public static class ProgressionStageSimulation
+    {
+        // One new-query workload per process; no unbounded queue or nested parallel trials.
+        private static readonly SemaphoreSlim Admission = new SemaphoreSlim(1, 1);
+
+        public static void Register(ObjectGraphType<StateContext> query)
+        {
+            query.Field<ProgressionStageResultType>("progressionStage",
+                description: "Read-only independent Adventure trials with exact owned/active-market equipment and sampled legal enhancement growth. No foods or crystal buffs; not an action eligibility check.",
+                arguments: new QueryArguments(
+                    new QueryArgument<NonNullGraphType<AddressType>> { Name = "avatarAddress" },
+                    new QueryArgument<NonNullGraphType<IntGraphType>> { Name = "worldId" },
+                    new QueryArgument<NonNullGraphType<IntGraphType>> { Name = "stageId" },
+                    new QueryArgument<NonNullGraphType<ListGraphType<NonNullGraphType<GuidGraphType>>>> { Name = "equipmentIds" },
+                    new QueryArgument<NonNullGraphType<ListGraphType<NonNullGraphType<GuidGraphType>>>> { Name = "costumeIds" },
+                    new QueryArgument<NonNullGraphType<ListGraphType<NonNullGraphType<RuneSlotInfoInputType>>>> { Name = "runeSlotInfos" },
+                    new QueryArgument<ListGraphType<NonNullGraphType<GuidGraphType>>> { Name = "marketProductIds", DefaultValue = new List<Guid>() },
+                    new QueryArgument<ListGraphType<NonNullGraphType<ProgressionUpgradeInputType>>> { Name = "upgrades", DefaultValue = new List<ProgressionUpgrade>() },
+                    new QueryArgument<DecimalGraphType> { Name = "budgetNcg", Description = "Optional per-request cap on market asks plus native enhancement NCG. Excludes transaction fees and valuation of consumed owned materials; reserve those in the caller." },
+                    new QueryArgument<NonNullGraphType<IntGraphType>> { Name = "simulationCount" },
+                    new QueryArgument<IntGraphType> { Name = "seed", DefaultValue = 1729 }),
+                resolve: context => Run(context));
+        }
+
+        private static ProgressionStageResult Run(IResolveFieldContext<StateContext> context)
+        {
+            var count = context.GetArgument<int>("simulationCount");
+            if (count < 1 || count > 100) throw new ExecutionError("PROGRESSION_SIMULATION_COUNT");
+            if (!Admission.Wait(0)) throw new ExecutionError("PROGRESSION_SIMULATION_BUSY");
+            try
+            {
+                var timer = Stopwatch.StartNew();
+                void CheckBudget()
+                {
+                    context.CancellationToken.ThrowIfCancellationRequested();
+                    if (timer.Elapsed > TimeSpan.FromSeconds(30)) throw new ExecutionError("PROGRESSION_SIMULATION_DEADLINE");
+                }
+                CheckBudget();
+                var source = context.Source;
+                var world = source.WorldState;
+                var block = source.BlockIndex ?? throw new ExecutionError("PROGRESSION_STATE_BLOCK_REQUIRED");
+                var address = context.GetArgument<Address>("avatarAddress");
+                var equipmentIds = context.GetArgument<List<Guid>>("equipmentIds");
+                var costumes = context.GetArgument<List<Guid>>("costumeIds");
+                var runeInfos = context.GetArgument<List<RuneSlotInfo>>("runeSlotInfos");
+                var products = context.GetArgument<List<Guid>>("marketProductIds");
+                var upgrades = context.GetArgument<List<ProgressionUpgrade>>("upgrades");
+                var budget = context.GetArgument<decimal?>("budgetNcg");
+                if (budget < 0) throw new ExecutionError("PROGRESSION_BUDGET_INVALID");
+                if (equipmentIds.Count > 10 || equipmentIds.Distinct().Count() != equipmentIds.Count)
+                    throw new ExecutionError("PROGRESSION_DUPLICATE_EQUIPMENT");
+                if (costumes.Count > 10 || costumes.Distinct().Count() != costumes.Count ||
+                    products.Count > 10 || products.Distinct().Count() != products.Count ||
+                    upgrades.Count > 10 || upgrades.Select(x => x.ItemId).Distinct().Count() != upgrades.Count ||
+                    runeInfos.Count > 10 || runeInfos.Select(x => x.RuneId).Distinct().Count() != runeInfos.Count)
+                    throw new ExecutionError("PROGRESSION_INPUT_BOUND_OR_DUPLICATE");
+                var original = world.GetAvatarState(address) ?? throw new ExecutionError("PROGRESSION_AVATAR_NOT_FOUND");
+                var prepared = (AvatarState)original.Clone();
+                decimal marketCost = 0;
+                foreach (var id in products)
+                {
+                    CheckBudget();
+                    if (!world.TryGetLegacyState(Product.DeriveAddress(id), out BList raw) ||
+                        ProductFactory.DeserializeProduct(raw) is not ItemProduct product ||
+                        product.ProductId != id || product.Type != ProductType.NonFungible || product.TradableItem is not Equipment item || product.ItemCount != 1 ||
+                        product.SellerAgentAddress == original.agentAddress || product.RegisteredBlockIndex < 0 || product.RegisteredBlockIndex > block ||
+                        !product.Price.Currency.Equals(world.GetGoldCurrency()) || product.Price.Sign <= 0)
+                        throw new ExecutionError("PROGRESSION_MARKET_PRODUCT_INVALID");
+                    if (!world.TryGetLegacyState(ProductsState.DeriveAddress(product.SellerAvatarAddress), out BList sellerRaw) ||
+                        !new ProductsState(sellerRaw).ProductIds.Contains(id))
+                        throw new ExecutionError("PROGRESSION_MARKET_NOT_ACTIVE");
+                    if (prepared.inventory.Items.Any(x => x.item is INonFungibleItem n && n.NonFungibleId == item.ItemId) ||
+                        (!equipmentIds.Contains(item.ItemId) && !upgrades.Any(x => x.MaterialIds.Contains(item.ItemId))))
+                        throw new ExecutionError("PROGRESSION_MARKET_ITEM_CONFLICT_OR_UNUSED");
+                    // BuyProduct normalizes future market escrow availability on the purchased copy.
+                    var purchased = (Equipment)ItemFactory.Deserialize(item.Serialize());
+                    if (purchased.RequiredBlockIndex > block) purchased.Update(block);
+                    prepared.inventory.AddItem(purchased);
+                    marketCost += decimal.Parse(product.Price.GetQuantityString(), System.Globalization.CultureInfo.InvariantCulture);
+                }
+                foreach (var id in equipmentIds)
+                {
+                    if (!prepared.inventory.TryGetNonFungibleItem(id, out ItemUsable item) || item is not Equipment)
+                        throw new ExecutionError("PROGRESSION_EQUIPMENT_NOT_OWNED");
+                    if (item.RequiredBlockIndex > block)
+                        throw new ExecutionError("PROGRESSION_EQUIPMENT_UNAVAILABLE");
+                }
+                foreach (var id in costumes)
+                {
+                    if (!prepared.inventory.TryGetNonFungibleItem(id, out Costume costume) || costume.RequiredBlockIndex > block)
+                        throw new ExecutionError("PROGRESSION_COSTUME_NOT_OWNED_OR_UNAVAILABLE");
+                }
+                var sheets = world.GetSheets(containQuestSheet:true, containSimulatorSheets:true,
+                    sheetTypes:new[] {
+                        typeof(WorldSheet), typeof(StageSheet), typeof(StageWaveSheet), typeof(EnemySkillSheet),
+                        typeof(CostumeStatSheet), typeof(SkillSheet), typeof(MaterialItemSheet), typeof(ItemRequirementSheet),
+                        typeof(EquipmentItemSheet), typeof(EquipmentItemRecipeSheet), typeof(EquipmentItemSubRecipeSheetV2),
+                        typeof(EquipmentItemOptionSheet), typeof(EnhancementCostSheetV3), typeof(RuneListSheet),
+                        typeof(CollectionSheet), typeof(RuneLevelBonusSheet), typeof(BuffLimitSheet), typeof(BuffLinkSheet) });
+                var worldId = context.GetArgument<int>("worldId");
+                var stageId = context.GetArgument<int>("stageId");
+                if (!sheets.GetSheet<WorldSheet>().TryGetValue(worldId, out var worldRow) ||
+                    stageId < worldRow.StageBegin || stageId > worldRow.StageEnd ||
+                    !sheets.GetSheet<StageSheet>().TryGetValue(stageId, out var stage))
+                    throw new ExecutionError("PROGRESSION_WORLD_STAGE_INVALID");
+                var config = world.GetGameConfigState();
+                var slotAddress = RuneSlotState.DeriveAddress(address, BattleType.Adventure);
+                var slots = world.TryGetLegacyState(slotAddress, out BList rawSlots)
+                    ? new RuneSlotState(rawSlots) : new RuneSlotState(BattleType.Adventure);
+                slots.UpdateSlot(runeInfos, sheets.GetSheet<RuneListSheet>());
+                var runes = world.GetRuneState(address, out _);
+                foreach (var rune in runeInfos)
+                {
+                    if (runes.GetRuneState(rune.RuneId).Level <= 0) throw new ExecutionError("PROGRESSION_RUNE_NOT_OWNED");
+                }
+                var modifiers = new List<StatModifier>();
+                foreach (var collection in world.GetCollectionStates(new[] { address }).Values)
+                    modifiers.AddRange(collection.GetModifiers(sheets.GetSheet<CollectionSheet>()));
+                var waves = new List<int>();
+                var result = new ProgressionStageResult {
+                    StateBlock = block, WorldId = worldId, StageId = stageId, Trials = count, MarketNcg = marketCost,
+                    EquipmentIds = equipmentIds.Select(x => x.ToString()).ToArray(), ReadyAtBlock = block,
+                    Seed = context.GetArgument<int>("seed") };
+                var seed = result.Seed;
+                for (var trial = 0; trial < count; trial++)
+                {
+                    CheckBudget();
+                    // Independent upgrade and combat streams preserve common combat seeds across candidates.
+                    var avatar = (AvatarState)prepared.Clone();
+                    var upgradeRandom = new LocalRandom(unchecked((seed + trial * 1103515245) ^ 0x31a53f));
+                    var cost = ApplyUpgrades(avatar, equipmentIds, upgrades, block, upgradeRandom,
+                        sheets.GetSheet<EquipmentItemSheet>(), sheets.GetSheet<EnhancementCostSheetV3>());
+                    if (budget.HasValue && marketCost + cost.Ncg > budget.Value)
+                        throw new ExecutionError("PROGRESSION_BUDGET_EXCEEDED");
+                    result.EnhancementNcg = cost.Ncg;
+                    result.MaterialsConsumed = cost.Materials;
+                    result.ReadyAtBlock = Math.Max(result.ReadyAtBlock, cost.ReadyAt);
+                    foreach (var upgrade in upgrades)
+                    {
+                        avatar.inventory.TryGetNonFungibleItem(upgrade.ItemId, out Equipment enhanced);
+                        result.EnhancementSamples.Add(new ProgressionEnhancementSample {
+                            Trial = trial, Equipment = (Equipment)ItemFactory.Deserialize(enhanced.Serialize()) });
+                    }
+                    // Enhanced copies are forecast at completion, never passed to real actions.
+                    var selected = avatar.ValidateEquipmentsV3(equipmentIds, result.ReadyAtBlock, config);
+                    var selectedCostumes = avatar.ValidateCostumeV2(costumes, config);
+                    avatar.ValidateItemRequirement(selectedCostumes.Select(x => x.Id).ToList(), selected,
+                        sheets.GetSheet<ItemRequirementSheet>(), sheets.GetSheet<EquipmentItemRecipeSheet>(),
+                        sheets.GetSheet<EquipmentItemSubRecipeSheetV2>(), sheets.GetSheet<EquipmentItemOptionSheet>(), "progression-simulation");
+                    avatar.EquipItems(equipmentIds.Concat(costumes));
+                    var random = new LocalRandom(unchecked(seed + trial * 1103515245));
+                    var simulator = new StageSimulator(random, avatar, new List<Guid>(), new AllRuneState((BList)runes.Serialize()),
+                        new RuneSlotState((BList)slots.Serialize()), new List<Skill>(), worldId, stageId, stage,
+                        sheets.GetSheet<StageWaveSheet>()[stageId], original.worldInformation.IsStageCleared(stageId),
+                        StageRewardExpHelper.GetExp(original.level, stageId), sheets.GetSimulatorSheets(),
+                        sheets.GetSheet<EnemySkillSheet>(), sheets.GetSheet<CostumeStatSheet>(),
+                        StageSimulator.GetWaveRewards(random, stage, sheets.GetSheet<MaterialItemSheet>()),
+                        modifiers, sheets.GetSheet<BuffLimitSheet>(), sheets.GetSheet<BuffLinkSheet>(), false,
+                        shatterStrikeMaxDamage:config.ShatterStrikeMaxDamage);
+                    simulator.Simulate();
+                    CheckBudget();
+                    waves.Add(simulator.Log.clearedWaveNumber);
+                    // Capture native battle output from this exact trial; do not reinterpret sheet
+                    // weights as independent probabilities or grant full-wave rewards to losses.
+                    result.FarmingSamples.Add(new ProgressionFarmingSample {
+                        Trial = trial, ClearedWaves = simulator.Log.clearedWaveNumber,
+                        ExpGain = simulator.Player.Exp.Current - avatar.exp,
+                        // CollectionMap.CopyTo is intentionally unimplemented; enumerate first.
+                        Materials = simulator.ItemMap.Select(x => x).OrderBy(x => x.Key)
+                            .Select(x => new ProgressionMaterialReward { Id = x.Key, Count = x.Value }).ToArray() });
+                }
+                result.Wins = waves.Count(x => x == sheets.GetSheet<StageWaveSheet>()[stageId].Waves.Count);
+                result.ClearedWaves = string.Join(",", waves);
+                // Wilson lower bound, not a guarantee; a small all-win sample is not called 100% reliable.
+                var p = result.Wins / (double)count;
+                const double z = 1.959963984540054;
+                result.WinRateLower95 = result.Wins == 0 ? 0 : Math.Clamp(
+                    (p + z*z/(2*count) - z*Math.Sqrt(p*(1-p)/count + z*z/(4*count*count))) / (1+z*z/count), 0, 1);
+                return result;
+            }
+            finally { Admission.Release(); }
+        }
+
+        private static (decimal Ncg, int Materials, long ReadyAt) ApplyUpgrades(AvatarState avatar,
+            List<Guid> selected, List<ProgressionUpgrade> upgrades, long block, LocalRandom random,
+            EquipmentItemSheet items, EnhancementCostSheetV3 costs)
+        {
+            decimal ncg = 0;
+            var materials = 0;
+            var ready = block;
+            var costRows = costs.OrderedList ?? throw new ExecutionError("PROGRESSION_ENHANCEMENT_SHEET_MISSING");
+            foreach (var upgrade in upgrades)
+            {
+                if (!selected.Contains(upgrade.ItemId) ||
+                    !avatar.inventory.TryGetNonFungibleItem(upgrade.ItemId, out ItemUsable usable) ||
+                    usable is not Equipment target || target.RequiredBlockIndex > block ||
+                    upgrade.MaterialIds.Count == 0 || upgrade.MaterialIds.Count > ItemEnhancement.MaterialCountLimit ||
+                    upgrade.MaterialIds.Distinct().Count() != upgrade.MaterialIds.Count ||
+                    upgrade.MaterialIds.Any(selected.Contains))
+                    throw new ExecutionError("PROGRESSION_UPGRADE_MATERIAL");
+                var maxLevel = ItemEnhancement.GetEquipmentMaxLevel(target, costs);
+                if (target.level > maxLevel) throw new ExecutionError("PROGRESSION_UPGRADE_LEVEL");
+                var start = target.level == 0 ? new EnhancementCostSheetV3.Row() : costRows.Single(x =>
+                    x.ItemSubType == target.ItemSubType && x.Grade == target.Grade && x.Level == target.level);
+                var exp = target.GetRealExp(items, costs);
+                foreach (var id in upgrade.MaterialIds)
+                {
+                    if (!avatar.inventory.TryGetNonFungibleItem(id, out ItemUsable material) || material is not Equipment equipment ||
+                        equipment.ItemSubType != target.ItemSubType || equipment.RequiredBlockIndex > block ||
+                        avatar.inventory.Items.Any(x => x.item is INonFungibleItem n && n.NonFungibleId == id && x.Locked))
+                        throw new ExecutionError("PROGRESSION_UPGRADE_MATERIAL");
+                    exp = checked(exp + equipment.GetRealExp(items, costs));
+                    avatar.inventory.RemoveNonFungibleItem(id);
+                    materials++;
+                }
+                target.Unequip();
+                target.Exp = exp;
+                var row = costRows.Where(x => x.ItemSubType == target.ItemSubType && x.Grade == target.Grade && x.Exp <= exp)
+                    .OrderByDescending(x => x.Exp).FirstOrDefault();
+                if (row != null && row.Level > target.level) target.SetLevel(random, row.Level, costs);
+                var end = target.level == 0 ? new EnhancementCostSheetV3.Row() : costRows.Single(x =>
+                    x.ItemSubType == target.ItemSubType && x.Grade == target.Grade && x.Level == target.level);
+                ncg += checked((decimal)(end.Cost - start.Cost));
+                ready = Math.Max(ready, checked(block + end.RequiredBlockIndex - start.RequiredBlockIndex));
+                target.Update(ready);
+            }
+            return (ncg, materials, ready);
+        }
+    }
+
+    public sealed class ProgressionUpgrade
+    {
+        public Guid ItemId { get; set; }
+        public List<Guid> MaterialIds { get; set; } = new List<Guid>();
+    }
+
+    public sealed class ProgressionUpgradeInputType : InputObjectGraphType<ProgressionUpgrade>
+    {
+        public ProgressionUpgradeInputType()
+        {
+            Name = "ProgressionEquipmentUpgradeInput";
+            Field<NonNullGraphType<GuidGraphType>>("itemId");
+            Field<NonNullGraphType<ListGraphType<NonNullGraphType<GuidGraphType>>>>("materialIds");
+        }
+    }
+
+    public sealed class ProgressionStageResult
+    {
+        public long StateBlock { get; set; }
+        public int WorldId { get; set; }
+        public int StageId { get; set; }
+        public int Seed { get; set; }
+        public int Trials { get; set; }
+        public int Wins { get; set; }
+        public string ClearedWaves { get; set; } = "";
+        public double WinRateLower95 { get; set; }
+        public decimal MarketNcg { get; set; }
+        public decimal EnhancementNcg { get; set; }
+        public int MaterialsConsumed { get; set; }
+        public long ReadyAtBlock { get; set; }
+        public string[] EquipmentIds { get; set; } = Array.Empty<string>();
+        public List<ProgressionEnhancementSample> EnhancementSamples { get; } = new List<ProgressionEnhancementSample>();
+        public List<ProgressionFarmingSample> FarmingSamples { get; } = new List<ProgressionFarmingSample>();
+    }
+
+    public sealed class ProgressionFarmingSample
+    {
+        public int Trial { get; set; }
+        public int ClearedWaves { get; set; }
+        public long ExpGain { get; set; }
+        public ProgressionMaterialReward[] Materials { get; set; } = Array.Empty<ProgressionMaterialReward>();
+    }
+    public sealed class ProgressionMaterialReward
+    {
+        public int Id { get; set; }
+        public int Count { get; set; }
+    }
+    public sealed class ProgressionFarmingSampleType : ObjectGraphType<ProgressionFarmingSample>
+    {
+        public ProgressionFarmingSampleType()
+        {
+            Field(x => x.Trial); Field(x => x.ClearedWaves); Field(x => x.ExpGain);
+            Field<ListGraphType<ProgressionMaterialRewardType>>("materials", resolve:context => context.Source.Materials);
+        }
+    }
+    public sealed class ProgressionMaterialRewardType : ObjectGraphType<ProgressionMaterialReward>
+    {
+        public ProgressionMaterialRewardType() { Field(x => x.Id); Field(x => x.Count); }
+    }
+
+    public sealed class ProgressionEnhancementSample
+    {
+        public int Trial { get; set; }
+        public Equipment Equipment { get; set; } = null!;
+    }
+
+    public sealed class ProgressionEnhancementSampleType : ObjectGraphType<ProgressionEnhancementSample>
+    {
+        public ProgressionEnhancementSampleType()
+        {
+            Field(x => x.Trial);
+            Field<States.Models.Item.EquipmentType>("equipment", resolve:context => context.Source.Equipment);
+        }
+    }
+
+    public sealed class ProgressionStageResultType : ObjectGraphType<ProgressionStageResult>
+    {
+        public ProgressionStageResultType()
+        {
+            Name = "ProgressionStageForecast";
+            Field(x => x.WorldId); Field(x => x.StageId);
+            Field<BooleanGraphType>("farmingMaterialRewardsOnly", resolve:_ => true);
+            Field(x => x.StateBlock); Field(x => x.Seed); Field(x => x.Trials); Field(x => x.Wins);
+            Field(x => x.ClearedWaves); Field(x => x.WinRateLower95);
+            Field(x => x.MarketNcg); Field(x => x.EnhancementNcg); Field(x => x.MaterialsConsumed);
+            Field(x => x.ReadyAtBlock); Field(x => x.EquipmentIds);
+            Field<ListGraphType<ProgressionEnhancementSampleType>>("enhancementSamples", resolve:context => context.Source.EnhancementSamples);
+            Field<ListGraphType<ProgressionFarmingSampleType>>("farmingSamples", resolve:context => context.Source.FarmingSamples);
+            Field<BooleanGraphType>("transactionFeesIncluded", resolve:_ => false);
+            Field<BooleanGraphType>("actionEligibilityVerified", resolve:_ => false);
+            Field<BooleanGraphType>("enhancementSlotAvailabilityVerified", resolve:_ => false);
+            Field<BooleanGraphType>("ownedMaterialValuationIncluded", resolve:_ => false);
+            Field<BooleanGraphType>("foodsIncluded", resolve:_ => false);
+            Field<BooleanGraphType>("crystalBuffsIncluded", resolve:_ => false);
+        }
+    }
+}
