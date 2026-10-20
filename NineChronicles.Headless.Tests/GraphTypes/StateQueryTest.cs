@@ -37,6 +37,17 @@ namespace NineChronicles.Headless.Tests.GraphTypes
             _codec = new Codec();
         }
 
+        [Fact]
+        public void PublicSchemaRetainsSupportedCustomQueries()
+        {
+            var query = new StateQuery();
+
+            Assert.DoesNotContain(query.Fields, field => field.Name == "adventureAdmission");
+            Assert.Contains(query.Fields, field => field.Name == "hackAndSlashFirstClear");
+            Assert.Contains(query.Fields, field => field.Name == "infiniteTowerFirstClear");
+            Assert.Contains(query.Fields, field => field.Name == "InfiniteTowerLoadoutCp");
+        }
+
         [Theory]
         [MemberData(nameof(GetMemberDataOfGarages))]
         public async Task Garage(
