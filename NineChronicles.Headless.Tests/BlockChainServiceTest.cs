@@ -19,6 +19,7 @@ using NineChronicles.Headless.Repositories.BlockChain;
 using NineChronicles.Headless.Repositories.Swarm;
 using NineChronicles.Headless.Repositories.Transaction;
 using NineChronicles.Headless.Repositories.WorldState;
+using NineChronicles.Headless.Services;
 using Xunit;
 
 namespace NineChronicles.Headless.Tests
@@ -85,7 +86,48 @@ namespace NineChronicles.Headless.Tests
             // Assert
             Assert.Equal(stageResult, result);
             mockBlockChain.Verify(bc => bc.StageTransaction(It.IsAny<Transaction>()), Times.Once);
-            mockSwarm.Verify(s => s.BroadcastTxs(It.IsAny<Transaction[]>()), Times.Once);
+            mockSwarm.Verify(s => s.BroadcastTxs(It.IsAny<Transaction[]>()), stageResult ? Times.Once : Times.Never);
+        }
+
+        [Fact]
+        public async Task PutTransactionHonorsSignerBlacklistAndDoesNotBroadcastRejection()
+        {
+            var directory = Path.Combine(Path.GetTempPath(), "agent-rpc-" + Guid.NewGuid());
+            Directory.CreateDirectory(directory);
+            try
+            {
+                var path = Path.Combine(directory, "agents.db");
+                AgentBlacklistPersistenceTest.CreateDatabase(path);
+                var store = new SqliteAgentBlacklist(path);
+                var chain = GraphQLTestUtils.CreateStandaloneContext().BlockChain;
+                chain.StagePolicy = new AgentBlacklistStagePolicy(new VolatileStagePolicy(), store);
+                var repository = new Mock<IBlockChainRepository>();
+                repository.Setup(r => r.StageTransaction(It.IsAny<Transaction>()))
+                    .Returns((Transaction tx) => chain.StageTransaction(tx));
+                repository.Setup(r => r.GetStagedTransactionIds()).Returns(() => chain.GetStagedTransactionIds());
+                var swarm = new Mock<ISwarmRepository>();
+                var service = new BlockChainService(
+                    repository.Object, new Mock<ITransactionRepository>().Object,
+                    new Mock<IWorldStateRepository>().Object, swarm.Object, new RpcContext(),
+                    new Mock<LibplanetNodeServiceProperties>().Object,
+                    new ActionEvaluationPublisher(new BlockRenderer(), new ActionRenderer(),
+                        new ExceptionRenderer(), new NodeStatusRenderer(), new MockBlockChainStates(),
+                        "", 0, new RpcContext(), new StateMemoryCache()), new StateMemoryCache());
+                var blocked = new PrivateKey();
+                var allowed = new PrivateKey();
+                store.Add(blocked.Address);
+                Transaction Make(PrivateKey signer) => Transaction.Create(0, signer, chain.Genesis.Hash,
+                    new[] { new DailyReward { avatarAddress = new PrivateKey().Address }.PlainValue });
+
+                Assert.False(await service.PutTransaction(Make(blocked).Serialize()));
+                swarm.Verify(s => s.BroadcastTxs(It.IsAny<Transaction[]>()), Times.Never);
+                Assert.True(await service.PutTransaction(Make(allowed).Serialize()));
+                swarm.Verify(s => s.BroadcastTxs(It.IsAny<Transaction[]>()), Times.Once);
+            }
+            finally
+            {
+                Directory.Delete(directory, recursive: true);
+            }
         }
 
         [Fact]

@@ -62,6 +62,25 @@ namespace NineChronicles.Headless.GraphTypes
                 this.AuthorizeWith(GraphQLService.JwtPolicyKey);
             }
 
+            Field<NonNullGraphType<BooleanGraphType>>(
+                name: "isAgentBlacklisted",
+                arguments: new QueryArguments(new QueryArgument<NonNullGraphType<AddressType>> { Name = "agentAddress" }),
+                resolve: context =>
+                {
+                    if (!standaloneContext.AgentBlacklist.IsEnabled)
+                    {
+                        throw new ExecutionError("Agent blacklist is not configured.");
+                    }
+
+                    return standaloneContext.AgentBlacklist.IsBlocked(context.GetArgument<Address>("agentAddress"));
+                })
+                .AuthorizeWith(GraphQLService.AgentBlacklistAdminPolicyKey);
+
+            Field<NonNullGraphType<ListGraphType<NonNullGraphType<AddressType>>>>(
+                name: "blacklistedAgents",
+                resolve: _ => standaloneContext.AgentBlacklist.List())
+                .AuthorizeWith(GraphQLService.AgentBlacklistAdminPolicyKey);
+
             Field<NonNullGraphType<StateQuery>>(name: "stateQuery", arguments: new QueryArguments(
                 new QueryArgument<ByteStringType>
                 {

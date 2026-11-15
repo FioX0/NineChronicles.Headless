@@ -532,6 +532,52 @@ namespace NineChronicles.Headless.GraphTypes
                     return Encode(context, action);
                 });
             Field<NonNullGraphType<ByteStringType>>(
+                "costumeSummon",
+                arguments: new QueryArguments(
+                    new QueryArgument<NonNullGraphType<AddressType>>
+                    {
+                        Name = "avatarAddress",
+                        Description = "Address of the avatar performing the summon."
+                    },
+                    new QueryArgument<NonNullGraphType<IntGraphType>>
+                    {
+                        Name = "groupId",
+                        Description = "CostumeSummonSheet group id (50001, 50002, ...)."
+                    },
+                    new QueryArgument<NonNullGraphType<IntGraphType>>
+                    {
+                        Name = "summonCount",
+                        Description = "Number of costumes to summon."
+                    }),
+                resolve: context =>
+                {
+                    ActionBase action = new CostumeSummon(
+                        context.GetArgument<Address>("avatarAddress"),
+                        context.GetArgument<int>("groupId"),
+                        context.GetArgument<int>("summonCount"));
+                    return Encode(context, action);
+                });
+            Field<NonNullGraphType<ByteStringType>>(
+                "claimGifts",
+                arguments: new QueryArguments(
+                    new QueryArgument<NonNullGraphType<AddressType>>
+                    {
+                        Name = "avatarAddress",
+                        Description = "Address of the avatar claiming the gift."
+                    },
+                    new QueryArgument<NonNullGraphType<IntGraphType>>
+                    {
+                        Name = "giftId",
+                        Description = "ClaimableGiftsSheet row id to claim."
+                    }),
+                resolve: context =>
+                {
+                    ActionBase action = new ClaimGifts(
+                        context.GetArgument<Address>("avatarAddress"),
+                        context.GetArgument<int>("giftId"));
+                    return Encode(context, action);
+                });
+            Field<NonNullGraphType<ByteStringType>>(
                 "runeEnhancement",
                 arguments: new QueryArguments(
                     new QueryArgument<NonNullGraphType<AddressType>>

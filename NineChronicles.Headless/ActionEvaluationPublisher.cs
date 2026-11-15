@@ -665,10 +665,8 @@ namespace NineChronicles.Headless
                         or ClaimStakeReward
                         or ClaimWordBossKillReward
                         or CombinationConsumable
-                        or CombinationEquipment
                         or CostumeSummon
                         or CreateAvatar
-                        or CustomEquipmentCraft
                         or DailyReward
                         or EndPledge
                         or EventConsumableItemCrafts
@@ -691,6 +689,11 @@ namespace NineChronicles.Headless
                         or UnlockRuneSlot
                         or UnlockWorld:
                         return isSigner;
+
+                    // Market watcher needs ALL equipment crafts for null-sub-recipe exploit
+                    // detection, regardless of signer (forward-tracker).
+                    case CombinationEquipment or CustomEquipmentCraft:
+                        return true;
 
                     // Actions that are always allowed
                     case ClaimAdventureBossReward or Wanted or BuyProduct or CancelProductRegistration:

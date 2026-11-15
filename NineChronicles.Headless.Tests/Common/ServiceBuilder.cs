@@ -7,6 +7,7 @@ using System.Collections.Immutable;
 using System.IO;
 using Libplanet.Blockchain.Policies;
 using NineChronicles.Headless.Properties;
+using NineChronicles.Headless.Services;
 using Nekoyume.Blockchain.Policy;
 using Nekoyume;
 
@@ -23,7 +24,8 @@ namespace NineChronicles.Headless.Tests.Common
 
         public static NineChroniclesNodeService CreateNineChroniclesNodeService(
             Block genesis,
-            PrivateKey? privateKey = null
+            PrivateKey? privateKey = null,
+            IAgentBlacklist? agentBlacklist = null
         )
         {
             var storePath = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName());
@@ -55,7 +57,8 @@ namespace NineChronicles.Headless.Tests.Common
                 properties,
                 BlockPolicy,
                 Planet.Odin,
-                StaticActionLoaderSingleton.Instance);
+                StaticActionLoaderSingleton.Instance,
+                agentBlacklist: agentBlacklist);
         }
     }
 }

@@ -54,6 +54,14 @@ namespace NineChronicles.Headless.Tests.GraphTypes
         }
 
         [Fact]
+        public void AgentBlacklistManagementMutationsExist()
+        {
+            var names = Schema.Mutation!.Fields.Select(field => field.Name).ToList();
+            Assert.Contains("blacklistAgent", names);
+            Assert.Contains("unblacklistAgent", names);
+        }
+
+        [Fact]
         public async Task CreatePrivateKey()
         {
             // FIXME: passphrase로 "passphrase" 대신 랜덤 문자열을 사용하면 좋을 것 같습니다.

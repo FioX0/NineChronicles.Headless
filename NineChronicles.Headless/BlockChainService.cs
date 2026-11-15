@@ -86,7 +86,7 @@ namespace NineChronicles.Headless
                     ? $"{action}"
                     : "NoAction";
                 var txId = tx.Id.ToString();
-                var stage = true;
+                var stage = false;
 
                 try
                 {
@@ -98,7 +98,10 @@ namespace NineChronicles.Headless
                     if (validationExc is null)
                     {
                         stage = _blockChainRepository.StageTransaction(tx);
-                        _swarmRepository.BroadcastTxs(new[] { tx });
+                        if (stage)
+                        {
+                            _swarmRepository.BroadcastTxs(new[] { tx });
+                        }
                     }
                     else
                     {

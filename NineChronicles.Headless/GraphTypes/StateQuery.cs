@@ -578,6 +578,31 @@ namespace NineChronicles.Headless.GraphTypes
                 }
             );
 
+            Field<NonNullGraphType<ListGraphType<NonNullGraphType<IntGraphType>>>>(
+                "claimableGifts",
+                description: "ClaimableGiftsSheet row ids the avatar may still claim at this block index.",
+                arguments: new QueryArguments(new QueryArgument<NonNullGraphType<AddressType>>
+                {
+                    Name = "avatarAddress",
+                    Description = "Address of avatar."
+                }),
+                resolve: context =>
+                {
+                    var avatarAddress = context.GetArgument<Address>("avatarAddress");
+                    var blockIndex = context.Source.BlockIndex
+                        ?? throw new ExecutionError("claimableGifts requires a block index.");
+                    var sheets = context.Source.WorldState.GetSheets(
+                        containItemSheet: false,
+                        sheetTypes: new[] { typeof(ClaimableGiftsSheet) });
+                    var sheet = sheets.GetSheet<ClaimableGiftsSheet>();
+                    var claimedGiftIds = context.Source.WorldState.GetClaimedGifts(avatarAddress);
+                    return sheet.Values
+                        .Where(row => row.Validate(blockIndex) && !claimedGiftIds.Contains(row.Id))
+                        .OrderBy(row => row.Id)
+                        .Select(row => row.Id)
+                        .ToArray();
+                });
+
             Field<RaiderStateType>(
                 name: "raiderState",
                 description: "world boss season user information.",

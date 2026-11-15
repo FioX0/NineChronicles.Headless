@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Linq;
 using AspNetCoreRateLimit;
 using GraphQL.Server;
 using GraphQL.Utilities;
@@ -30,6 +31,8 @@ namespace NineChronicles.Headless
     public class GraphQLService
     {
         public const string LocalPolicyKey = "LocalPolicy";
+
+        public const string AgentBlacklistAdminPolicyKey = "AgentBlacklistAdminPolicy";
 
         public const string JwtPolicyKey = "JwtPolicy";
 
@@ -162,6 +165,7 @@ namespace NineChronicles.Headless
                 }
 
                 services.AddTransient<LocalAuthenticationMiddleware>();
+                services.AddTransient<AgentBlacklistAdminAuthenticationMiddleware>();
 
                 // Repositories
                 services.AddSingleton<IWorldStateRepository, WorldStateRepository>();
@@ -202,6 +206,12 @@ namespace NineChronicles.Headless
                                     p.RequireClaim(
                                         "role",
                                         "Admin"));
+
+                            options.AddPolicy(
+                                AgentBlacklistAdminPolicyKey,
+                                p => p.RequireAssertion(context => context.User.Identities.Any(identity =>
+                                    identity.AuthenticationType == AgentBlacklistAdminAuthenticationMiddleware.AuthenticationType &&
+                                    identity.HasClaim(AgentBlacklistAdminAuthenticationMiddleware.ClaimType, "true"))));
 
                             // FIXME: Use ConfigurationException after bumping to .NET 8 or later.
                             if (Convert.ToBoolean(Configuration.GetSection("Jwt")["EnableJwtAuthentication"]))
@@ -251,6 +261,8 @@ namespace NineChronicles.Headless
                 {
                     app.UseMiddleware<JwtAuthenticationMiddleware>();
                 }
+
+                app.UseMiddleware<AgentBlacklistAdminAuthenticationMiddleware>();
 
                 if (Configuration[NoCorsKey] is null)
                 {

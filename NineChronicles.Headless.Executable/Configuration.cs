@@ -94,6 +94,10 @@ namespace NineChronicles.Headless.Executable
 
         public AccessControlServiceOptions? AccessControlService { get; set; }
 
+        public string? AgentBlacklistDatabasePath { get; set; }
+
+        public string? AgentBlacklistAdminTokenPath { get; set; }
+
         public int ArenaParticipantsSyncInterval { get; set; } = 1000;
 
         public void Overwrite(

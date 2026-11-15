@@ -46,6 +46,32 @@ namespace NineChronicles.Headless.GraphTypes
                 name: "action",
                 resolve: _ => new ActionMutation(nodeService));
 
+            Field<NonNullGraphType<BooleanGraphType>>(
+                name: "blacklistAgent",
+                description: "Persistently block an agent from staging transactions on configured nodes.",
+                arguments: new QueryArguments(new QueryArgument<NonNullGraphType<AddressType>> { Name = "agentAddress" }),
+                resolve: context =>
+                {
+                    var address = context.GetArgument<Address>("agentAddress");
+                    standaloneContext.AgentBlacklist.Add(address);
+                    // Drop already-staged blocked transactions on this node as part of the update.
+                    _ = standaloneContext.BlockChain.StagePolicy.Iterate(standaloneContext.BlockChain, filtered: false);
+                    return standaloneContext.AgentBlacklist.IsBlocked(address);
+                })
+                .AuthorizeWith(GraphQLService.AgentBlacklistAdminPolicyKey);
+
+            Field<NonNullGraphType<BooleanGraphType>>(
+                name: "unblacklistAgent",
+                description: "Remove an agent from the persistent transaction blacklist.",
+                arguments: new QueryArguments(new QueryArgument<NonNullGraphType<AddressType>> { Name = "agentAddress" }),
+                resolve: context =>
+                {
+                    var address = context.GetArgument<Address>("agentAddress");
+                    standaloneContext.AgentBlacklist.Remove(address);
+                    return !standaloneContext.AgentBlacklist.IsBlocked(address);
+                })
+                .AuthorizeWith(GraphQLService.AgentBlacklistAdminPolicyKey);
+
             Field<NonNullGraphType<TxIdType>>(
                 name: "stageTransaction",
                 description: "Add a new transaction to staging and return TxId",
@@ -63,6 +89,11 @@ namespace NineChronicles.Headless.GraphTypes
                         using var activity = ActivitySource.StartActivity("stageTransaction");
                         byte[] bytes = ByteUtil.ParseHex(context.GetArgument<string>("payload"));
                         Transaction tx = Transaction.Deserialize(bytes);
+                        if (standaloneContext.AgentBlacklist.IsBlocked(tx.Signer))
+                        {
+                            throw new ExecutionError("Agent is blocked by this node.");
+                        }
+
                         NineChroniclesNodeService? service = standaloneContext.NineChroniclesNodeService;
                         BlockChain? blockChain = service?.Swarm.BlockChain;
 
@@ -74,9 +105,15 @@ namespace NineChronicles.Headless.GraphTypes
                         Exception? validationExc = blockChain.Policy.ValidateNextBlockTx(blockChain, tx);
                         if (validationExc is null)
                         {
-                            blockChain.StageTransaction(tx);
+                            bool staged = blockChain.StageTransaction(tx);
+                            if (blockChain.StagePolicy.Get(blockChain, tx.Id, filtered: false) is null)
+                            {
+                                throw new ExecutionError("Transaction rejected by staging policy.");
+                            }
 
-                            if (service?.Swarm is { } swarm && swarm.Running)
+                            // A duplicate already in the pool can be acknowledged, but only a
+                            // newly staged transaction may be broadcast by this request.
+                            if (staged && service?.Swarm is { } swarm && swarm.Running)
                             {
                                 swarm.BroadcastTxs(new[] { tx });
                             }
@@ -88,6 +125,10 @@ namespace NineChronicles.Headless.GraphTypes
                             $"The given transaction is invalid. (due to: {validationExc.Message})",
                             validationExc
                         );
+                    }
+                    catch (ExecutionError)
+                    {
+                        throw;
                     }
                     catch (Exception e)
                     {

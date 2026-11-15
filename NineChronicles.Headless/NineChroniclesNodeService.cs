@@ -60,6 +60,8 @@ namespace NineChronicles.Headless
 
         public PrivateKey? MinerPrivateKey { get; set; }
 
+        public IAgentBlacklist AgentBlacklist { get; }
+
         static NineChroniclesNodeService()
         {
             try
@@ -85,11 +87,13 @@ namespace NineChronicles.Headless
             bool strictRendering = false,
             TimeSpan txLifeTime = default,
             int txQuotaPerSigner = 10,
-            AccessControlServiceOptions? acsOptions = null
+            AccessControlServiceOptions? acsOptions = null,
+            IAgentBlacklist? agentBlacklist = null
         )
         {
             MinerPrivateKey = minerPrivateKey;
             Properties = properties;
+            AgentBlacklist = agentBlacklist ?? DisabledAgentBlacklist.Instance;
 
             LogEventLevel logLevel = LogEventLevel.Debug;
 
@@ -105,6 +109,10 @@ namespace NineChronicles.Headless
 
             IStagePolicy stagePolicy = new NCStagePolicy(
                 txLifeTime, txQuotaPerSigner, accessControlService);
+            if (AgentBlacklist.IsEnabled)
+            {
+                stagePolicy = new AgentBlacklistStagePolicy(stagePolicy, AgentBlacklist);
+            }
 
             BlockRenderer = new BlockRenderer();
             ActionRenderer = new ActionRenderer();
@@ -223,7 +231,8 @@ namespace NineChronicles.Headless
                 strictRendering: properties.StrictRender,
                 txLifeTime: properties.TxLifeTime,
                 txQuotaPerSigner: properties.TxQuotaPerSigner,
-                acsOptions: properties.AccessControlServiceOptions
+                acsOptions: properties.AccessControlServiceOptions,
+                agentBlacklist: properties.AgentBlacklist
             );
             service.ConfigureContext(context);
             var meter = new Meter("NineChronicles");
@@ -282,6 +291,7 @@ namespace NineChronicles.Headless
         internal void ConfigureContext(StandaloneContext standaloneContext)
         {
             standaloneContext.NineChroniclesNodeService = this;
+            standaloneContext.AgentBlacklist = AgentBlacklist;
             standaloneContext.BlockChain = Swarm.BlockChain;
             standaloneContext.Store = Store;
             standaloneContext.StateStore = NodeService.StateStore;

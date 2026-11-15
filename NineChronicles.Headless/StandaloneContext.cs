@@ -9,6 +9,7 @@ using Libplanet.Headless;
 using Libplanet.Store;
 using Nekoyume.Model.State;
 using NineChronicles.Headless.GraphTypes;
+using NineChronicles.Headless.Services;
 using NineChronicles.Headless.Utils;
 
 namespace NineChronicles.Headless
@@ -45,6 +46,8 @@ namespace NineChronicles.Headless
         public Subject<Notification> NotificationSubject { get; } = new();
         public Subject<NodeException> NodeExceptionSubject { get; } = new();
         public NineChroniclesNodeService? NineChroniclesNodeService { get; set; }
+
+        public IAgentBlacklist AgentBlacklist { get; set; } = DisabledAgentBlacklist.Instance;
 
         public ConcurrentDictionary<Address,
                 ReplaySubject<string>>

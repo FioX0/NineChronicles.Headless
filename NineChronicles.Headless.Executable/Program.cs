@@ -11,6 +11,7 @@ using Microsoft.Extensions.Hosting;
 using NineChronicles.Headless.Executable.Commands;
 using NineChronicles.Headless.Executable.IO;
 using NineChronicles.Headless.Properties;
+using NineChronicles.Headless.Services;
 using Org.BouncyCastle.Security;
 using Serilog;
 using Serilog.Formatting.Compact;
@@ -458,6 +459,24 @@ namespace NineChronicles.Headless.Executable
                     ? null
                     : new PrivateKey(ByteUtil.ParseHex(headlessConfig.MinerPrivateKeyString));
                 TimeSpan minerBlockInterval = TimeSpan.FromMilliseconds(headlessConfig.MinerBlockIntervalMilliseconds);
+                IAgentBlacklist agentBlacklist = DisabledAgentBlacklist.Instance;
+                if (!string.IsNullOrWhiteSpace(headlessConfig.AgentBlacklistDatabasePath))
+                {
+                    if (string.IsNullOrWhiteSpace(headlessConfig.AgentBlacklistAdminTokenPath) ||
+                        !Path.IsPathFullyQualified(headlessConfig.AgentBlacklistAdminTokenPath) ||
+                        !File.Exists(headlessConfig.AgentBlacklistAdminTokenPath) ||
+                        File.ReadAllText(headlessConfig.AgentBlacklistAdminTokenPath).Trim().Length < 32)
+                    {
+                        throw new InvalidOperationException("Configured agent blacklist requires an absolute admin-token path containing a strong token.");
+                    }
+
+                    agentBlacklist = new SqliteAgentBlacklist(headlessConfig.AgentBlacklistDatabasePath);
+                }
+                else if (!string.IsNullOrWhiteSpace(headlessConfig.AgentBlacklistAdminTokenPath))
+                {
+                    throw new InvalidOperationException("Agent blacklist database path is required when its admin token is configured.");
+                }
+
                 var nineChroniclesProperties =
                     new NineChroniclesNodeServiceProperties(actionLoader, headlessConfig.AccessControlService)
                     {
@@ -469,7 +488,8 @@ namespace NineChronicles.Headless.Executable
                         MinerCount = headlessConfig.MinerCount,
                         MinerBlockInterval = minerBlockInterval,
                         TxQuotaPerSigner = headlessConfig.TxQuotaPerSigner,
-                        MaxTransactionPerBlock = headlessConfig.MaxTransactionPerBlock
+                        MaxTransactionPerBlock = headlessConfig.MaxTransactionPerBlock,
+                        AgentBlacklist = agentBlacklist
                     };
                 var arenaMemoryCache = new StateMemoryCache();
                 string otlpEndpoint = Environment.GetEnvironmentVariable("OTLP_ENDPOINT") ?? "http://localhost:4317";

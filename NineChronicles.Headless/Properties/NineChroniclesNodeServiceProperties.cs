@@ -9,6 +9,7 @@ using Libplanet.Headless.Hosting;
 using Libplanet.Headless;
 using Libplanet.Net.Consensus;
 using Nekoyume;
+using NineChronicles.Headless.Services;
 
 namespace NineChronicles.Headless.Properties
 {
@@ -58,6 +59,8 @@ namespace NineChronicles.Headless.Properties
         public IActionLoader ActionLoader { get; init; }
 
         public AccessControlServiceOptions? AccessControlServiceOptions { get; }
+
+        public IAgentBlacklist AgentBlacklist { get; set; } = DisabledAgentBlacklist.Instance;
 
         public static LibplanetNodeServiceProperties
             GenerateLibplanetNodeServiceProperties(
