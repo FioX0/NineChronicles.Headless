@@ -7,12 +7,12 @@ namespace NineChronicles.Headless.GraphTypes.States.Models
     {
         public StatsMapType()
         {
-            Field<NonNullGraphType<IntGraphType>>(nameof(StatsMap.HP));
-            Field<NonNullGraphType<IntGraphType>>(nameof(StatsMap.ATK));
-            Field<NonNullGraphType<IntGraphType>>(nameof(StatsMap.DEF));
-            Field<NonNullGraphType<IntGraphType>>(nameof(StatsMap.CRI));
-            Field<NonNullGraphType<IntGraphType>>(nameof(StatsMap.HIT));
-            Field<NonNullGraphType<IntGraphType>>(nameof(StatsMap.SPD));
+            Field<NonNullGraphType<LongGraphType>>(nameof(StatsMap.HP));
+            Field<NonNullGraphType<LongGraphType>>(nameof(StatsMap.ATK));
+            Field<NonNullGraphType<LongGraphType>>(nameof(StatsMap.DEF));
+            Field<NonNullGraphType<LongGraphType>>(nameof(StatsMap.CRI));
+            Field<NonNullGraphType<LongGraphType>>(nameof(StatsMap.HIT));
+            Field<NonNullGraphType<LongGraphType>>(nameof(StatsMap.SPD));
         }
     }
 }
