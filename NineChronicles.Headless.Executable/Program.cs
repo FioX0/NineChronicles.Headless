@@ -254,6 +254,11 @@ namespace NineChronicles.Headless.Executable
             bool arenaParticipantsSync = true,
             [Option(Description = "[DANGER] Turn on RemoteKeyValueService to debug.")]
             bool remoteKeyValueService = false,
+            [Option(Description = "Turn on a read-only RemoteKeyValueService (GetValue/ExistsKey only) " +
+                                  "for remote replays; needs --rpc-server. Every call requires an HS256 JWT " +
+                                  "signed with Jwt:Key (issuer Jwt:Issuer) expiring within an hour; refused " +
+                                  "while Jwt:Key is unset or the default.")]
+            bool remoteKeyValueServiceReadOnly = false,
             [Ignore] CancellationToken? cancellationToken = null
         )
         {
@@ -327,16 +332,57 @@ namespace NineChronicles.Headless.Executable
                 GetActionEvaluatorConfiguration(configuration.GetSection("Headless").GetSection("ActionEvaluator"));
 
             headlessConfig.Overwrite(
-                appProtocolVersionToken, trustedAppProtocolVersionSigners, genesisBlockPath, host, port,
-                swarmPrivateKeyString, storeType, storePath, noReduceStore, noMiner, minerCount,
-                minerPrivateKeyString, minerBlockIntervalMilliseconds, planet, iceServerStrings, peerStrings, rpcServer, rpcListenHost,
-                rpcListenPort, rpcRemoteServer, rpcHttpServer, graphQLServer, graphQLHost, graphQLPort,
-                graphQLSecretTokenPath, noCors, nonblockRenderer, nonblockRendererQueue, strictRendering,
-                logActionRenders, confirmations,
-                txLifeTime, messageTimeout, tipTimeout, demandBuffer, skipPreload,
-                minimumBroadcastTarget, bucketSize, chainTipStaleBehaviorType, txQuotaPerSigner, maximumPollPeers,
-                consensusPort, consensusPrivateKeyString, consensusSeedStrings, consensusTargetBlockIntervalMilliseconds, consensusProposeSecondBase, consensusEnterPreCommitDelay,
-                maxTransactionPerBlock, arenaParticipantsSyncInterval, remoteKeyValueService
+                appProtocolVersionToken,
+                trustedAppProtocolVersionSigners,
+                genesisBlockPath,
+                host,
+                port,
+                swarmPrivateKeyString,
+                storeType,
+                storePath,
+                noReduceStore,
+                noMiner,
+                minerCount,
+                minerPrivateKeyString,
+                minerBlockIntervalMilliseconds,
+                planet,
+                iceServerStrings,
+                peerStrings,
+                rpcServer,
+                rpcListenHost,
+                rpcListenPort,
+                rpcRemoteServer,
+                rpcHttpServer,
+                graphQLServer,
+                graphQLHost,
+                graphQLPort,
+                graphQLSecretTokenPath,
+                noCors,
+                nonblockRenderer,
+                nonblockRendererQueue,
+                strictRendering,
+                logActionRenders,
+                confirmations,
+                txLifeTime,
+                messageTimeout,
+                tipTimeout,
+                demandBuffer,
+                skipPreload,
+                minimumBroadcastTarget,
+                bucketSize,
+                chainTipStaleBehaviorType,
+                txQuotaPerSigner,
+                maximumPollPeers,
+                consensusPort,
+                consensusPrivateKeyString,
+                consensusSeedStrings,
+                consensusTargetBlockIntervalMilliseconds,
+                consensusProposeSecondBase * 1_000,
+                consensusEnterPreCommitDelay,
+                maxTransactionPerBlock,
+                arenaParticipantsSyncInterval,
+                remoteKeyValueService,
+                remoteKeyValueServiceReadOnly ? true : null
             );
 
             // Clean-up previous temporary log files.
@@ -617,6 +663,7 @@ namespace NineChronicles.Headless.Executable
                         NoCors = headlessConfig.NoCors,
                         UseMagicOnion = headlessConfig.RpcServer,
                         UseRemoteKeyValueService = headlessConfig.RemoteKeyValueService,
+                        UseReadOnlyRemoteKeyValueService = headlessConfig.RemoteKeyValueServiceReadOnly,
                         HttpOptions = headlessConfig.RpcServer && headlessConfig.RpcHttpServer == true
                             ? new GraphQLNodeServiceProperties.MagicOnionHttpOptions(
                                 $"{headlessConfig.RpcListenHost}:{headlessConfig.RpcListenPort}")

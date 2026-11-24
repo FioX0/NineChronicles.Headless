@@ -8,9 +8,9 @@ namespace NineChronicles.Headless.GraphTypes.States
     {
         public CombinationCrystalStateType()
         {
-            Field<NonNullGraphType<IntGraphType>>(
+            Field<NonNullGraphType<LongGraphType>>(
                 nameof(CombinationCrystalState.CrystalCost),
-                description: "Address of combination slot.",
+                description: "Crystal cost of one hammer point.",
                 resolve: context => context.Source.CrystalCost);
             Field<NonNullGraphType<IntGraphType>>(
                 nameof(CombinationCrystalState.RecipeId),
