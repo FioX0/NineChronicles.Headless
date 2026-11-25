@@ -36,7 +36,10 @@ namespace NineChronicles.Headless.GraphTypes
     public static class ProgressionStageSimulation
     {
         // One new-query workload per process; no unbounded queue or nested parallel trials.
-        private static readonly SemaphoreSlim Admission = new SemaphoreSlim(1, 1);
+        // Progression forecasts are read-only and CPU-bound; the box has 32 cores, so admitting only one left
+        // throughput on the floor. Widened to 8 (2026-11-25). Callers must not exceed this: Wait(0) rejects
+        // immediately with PROGRESSION_SIMULATION_BUSY rather than queueing.
+        private static readonly SemaphoreSlim Admission = new SemaphoreSlim(8, 8);
 
         public static void Register(ObjectGraphType<StateContext> query)
         {
