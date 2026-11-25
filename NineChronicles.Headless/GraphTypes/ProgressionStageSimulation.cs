@@ -53,7 +53,8 @@ namespace NineChronicles.Headless.GraphTypes
                     new QueryArgument<ListGraphType<NonNullGraphType<ProgressionUpgradeInputType>>> { Name = "upgrades", DefaultValue = new List<ProgressionUpgrade>() },
                     new QueryArgument<DecimalGraphType> { Name = "budgetNcg", Description = "Optional per-request cap on market asks plus native enhancement NCG. Excludes transaction fees and valuation of consumed owned materials; reserve those in the caller." },
                     new QueryArgument<NonNullGraphType<IntGraphType>> { Name = "simulationCount" },
-                    new QueryArgument<IntGraphType> { Name = "seed", DefaultValue = 1729 }),
+                    new QueryArgument<IntGraphType> { Name = "seed", DefaultValue = 1729 },
+                new QueryArgument<IntGraphType> { Name = "levelOverride", Description = "Optional avatar level to forecast instead of the chain level, so a caller can ask whether gaining levels would make the stage winnable. Simulation only: nothing is written to chain state." }),
                 resolve: context => Run(context));
         }
 
@@ -81,6 +82,7 @@ namespace NineChronicles.Headless.GraphTypes
                 var products = context.GetArgument<List<Guid>>("marketProductIds");
                 var upgrades = context.GetArgument<List<ProgressionUpgrade>>("upgrades");
                 var budget = context.GetArgument<decimal?>("budgetNcg");
+                var levelOverride = context.GetArgument<int?>("levelOverride");
                 if (budget < 0) throw new ExecutionError("PROGRESSION_BUDGET_INVALID");
                 if (equipmentIds.Count > 10 || equipmentIds.Distinct().Count() != equipmentIds.Count)
                     throw new ExecutionError("PROGRESSION_DUPLICATE_EQUIPMENT");
@@ -131,13 +133,22 @@ namespace NineChronicles.Headless.GraphTypes
                         typeof(CostumeStatSheet), typeof(SkillSheet), typeof(MaterialItemSheet), typeof(ItemRequirementSheet),
                         typeof(EquipmentItemSheet), typeof(EquipmentItemRecipeSheet), typeof(EquipmentItemSubRecipeSheetV2),
                         typeof(EquipmentItemOptionSheet), typeof(EnhancementCostSheetV3), typeof(RuneListSheet),
-                        typeof(CollectionSheet), typeof(RuneLevelBonusSheet), typeof(BuffLimitSheet), typeof(BuffLinkSheet) });
+                        typeof(CollectionSheet), typeof(RuneLevelBonusSheet), typeof(BuffLimitSheet), typeof(BuffLinkSheet),
+                        typeof(CharacterLevelSheet) });
                 var worldId = context.GetArgument<int>("worldId");
                 var stageId = context.GetArgument<int>("stageId");
                 if (!sheets.GetSheet<WorldSheet>().TryGetValue(worldId, out var worldRow) ||
                     stageId < worldRow.StageBegin || stageId > worldRow.StageEnd ||
                     !sheets.GetSheet<StageSheet>().TryGetValue(stageId, out var stage))
                     throw new ExecutionError("PROGRESSION_WORLD_STAGE_INVALID");
+                if (levelOverride.HasValue)
+                {
+                    // Bound by the live level sheet so a forecast can never assume a level the game does not define.
+                    int maxLevel = sheets.GetSheet<CharacterLevelSheet>().Values.Max(r => r.Level);
+                    if (levelOverride.Value < 1 || levelOverride.Value > maxLevel)
+                        throw new ExecutionError("PROGRESSION_LEVEL_OVERRIDE_OUT_OF_RANGE");
+                    prepared.level = levelOverride.Value;
+                }
                 var config = world.GetGameConfigState();
                 var slotAddress = RuneSlotState.DeriveAddress(address, BattleType.Adventure);
                 var slots = world.TryGetLegacyState(slotAddress, out BList rawSlots)
@@ -155,7 +166,7 @@ namespace NineChronicles.Headless.GraphTypes
                 var result = new ProgressionStageResult {
                     StateBlock = block, WorldId = worldId, StageId = stageId, Trials = count, MarketNcg = marketCost,
                     EquipmentIds = equipmentIds.Select(x => x.ToString()).ToArray(), ReadyAtBlock = block,
-                    Seed = context.GetArgument<int>("seed") };
+                    Seed = context.GetArgument<int>("seed"), SimulatedLevel = prepared.level };
                 var seed = result.Seed;
                 for (var trial = 0; trial < count; trial++)
                 {
@@ -187,7 +198,7 @@ namespace NineChronicles.Headless.GraphTypes
                     var simulator = new StageSimulator(random, avatar, new List<Guid>(), new AllRuneState((BList)runes.Serialize()),
                         new RuneSlotState((BList)slots.Serialize()), new List<Skill>(), worldId, stageId, stage,
                         sheets.GetSheet<StageWaveSheet>()[stageId], original.worldInformation.IsStageCleared(stageId),
-                        StageRewardExpHelper.GetExp(original.level, stageId), sheets.GetSimulatorSheets(),
+                        StageRewardExpHelper.GetExp(prepared.level, stageId), sheets.GetSimulatorSheets(),
                         sheets.GetSheet<EnemySkillSheet>(), sheets.GetSheet<CostumeStatSheet>(),
                         StageSimulator.GetWaveRewards(random, stage, sheets.GetSheet<MaterialItemSheet>()),
                         modifiers, sheets.GetSheet<BuffLimitSheet>(), sheets.GetSheet<BuffLinkSheet>(), false,
@@ -286,6 +297,8 @@ namespace NineChronicles.Headless.GraphTypes
         public int StageId { get; set; }
         public int Seed { get; set; }
         public int Trials { get; set; }
+        /// <summary>The avatar level actually forecast, so a caller can confirm an override took effect.</summary>
+        public int SimulatedLevel { get; set; }
         public int Wins { get; set; }
         public string ClearedWaves { get; set; } = "";
         public double WinRateLower95 { get; set; }
@@ -346,6 +359,7 @@ namespace NineChronicles.Headless.GraphTypes
             Field(x => x.WorldId); Field(x => x.StageId);
             Field<BooleanGraphType>("farmingMaterialRewardsOnly", resolve:_ => true);
             Field(x => x.StateBlock); Field(x => x.Seed); Field(x => x.Trials); Field(x => x.Wins);
+            Field(x => x.SimulatedLevel);
             Field(x => x.ClearedWaves); Field(x => x.WinRateLower95);
             Field(x => x.MarketNcg); Field(x => x.EnhancementNcg); Field(x => x.MaterialsConsumed);
             Field(x => x.ReadyAtBlock); Field(x => x.EquipmentIds);
